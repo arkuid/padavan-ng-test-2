@@ -132,7 +132,7 @@ jobs:
       run: |
         cp "padavan-ng/trunk/images/$FW_FILE_NAME" .
         echo "BUILD_TIMESTAMP=$(date '+%Y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV
-        cp build.config final-config.txt
+        cp build.config
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -142,7 +142,6 @@ jobs:
         path: |
           ${{ env.FW_FILE_NAME }}
           build.config
-          final-config.txt
 
     - name: Check firmware size
       run: |
