@@ -48,13 +48,13 @@ jobs:
         # Copy model config as base
         cp "$CONFIG_FILE" build.config
         
-        # Add variables from variables.cfg if exists in the same directory
+        # Add variables from common-vars.cfg if exists in the same directory
         CONFIG_DIR=$(dirname "$CONFIG_FILE")
-        VARIABLES_FILE="$CONFIG_DIR/variables.cfg"
+        COMMON_VARS_FILE="$CONFIG_DIR/common-vars.cfg"
         
-        if [ -f "$VARIABLES_FILE" ]; then
-          echo "Adding variables from $VARIABLES_FILE"
-          cat "$VARIABLES_FILE" >> build.config
+        if [ -f "$COMMON_VARS_FILE" ]; then
+          echo "Adding variables from $COMMON_VARS_FILE"
+          cat "$COMMON_VARS_FILE" >> build.config
         fi
         
         # Display final config
