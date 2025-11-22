@@ -66,18 +66,29 @@ jobs:
         if [ -f "$COMMON_VARS_FILE" ]; then
           echo "Adding variables from $COMMON_VARS_FILE"
           cat "$COMMON_VARS_FILE" >> build.config
+          echo "=== Content of common-vars.cfg ==="
+          cat "$COMMON_VARS_FILE"
+        else
+          echo "common-vars.cfg not found in $CONFIG_DIR"
         fi
         
         # Display final config
-        echo "Final build.config:"
+        echo "=== Final build.config ==="
         cat build.config
 
     - name: Load config variables
       run: |
         sed -i 's|\r$||g' build.config
+        # Load all variables from build.config
+        set -a
         . build.config
-        for v in "${!PADAVAN_@}" "${!CONFIG_@}"; do
-          echo "$v=${!v}" >> $GITHUB_ENV
+        set +a
+        
+        # Export all defined variables to GITHUB_ENV
+        for var in $(grep -oE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*' build.config | grep -v '^#' | tr -d ' '); do
+          if [[ -v "$var" ]]; then
+            echo "${var}=${!var}" >> $GITHUB_ENV
+          fi
         done
 
     - name: Download toolchain
