@@ -63,22 +63,34 @@ jobs:
         COMMON_VARS_FILE="common-vars.cfg"
         
         if [ -f "$COMMON_VARS_FILE" ]; then
-          echo "Adding variables from $COMMON_VARS_FILE"
-          cat "$COMMON_VARS_FILE" >> build.config
+          echo "Adding variables from $COMMON_VARS_FILE with priority"
+          
+          # Process common-vars.cfg and apply overrides
+          while IFS= read -r line; do
+            # Skip empty lines and comments
+            if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
+              continue
+            fi
+            
+            # Extract variable name (part before =)
+            var_name="${line%%=*}"
+            var_name="${var_name#export }"
+            var_name="${var_name// /}"
+            
+            if [[ -n "$var_name" ]]; then
+              # Remove this variable from build.config if exists
+              sed -i "/^[[:space:]]*${var_name}=/d" build.config
+              sed -i "/^[[:space:]]*#${var_name}=/d" build.config
+              
+              # Add the line from common-vars.cfg
+              echo "$line" >> build.config
+            fi
+          done < "$COMMON_VARS_FILE"
+          
           echo "=== Content of common-vars.cfg ==="
           cat "$COMMON_VARS_FILE"
         else
           echo "common-vars.cfg not found in repository root"
-          # Also check in configs directory
-          COMMON_VARS_FILE="$CONFIGS_PATH/common-vars.cfg"
-          if [ -f "$COMMON_VARS_FILE" ]; then
-            echo "Adding variables from $COMMON_VARS_FILE"
-            cat "$COMMON_VARS_FILE" >> build.config
-            echo "=== Content of common-vars.cfg ==="
-            cat "$COMMON_VARS_FILE"
-          else
-            echo "common-vars.cfg not found in $CONFIGS_PATH either"
-          fi
         fi
         
         # Display final config
