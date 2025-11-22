@@ -67,23 +67,23 @@ jobs:
           
           # Process common-vars.cfg and apply overrides
           while IFS= read -r line; do
-            # Skip empty lines and comments
-            if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
+            # Skip empty lines
+            if [[ -z "$line" ]]; then
               continue
             fi
             
-            # Extract variable name (part before =)
-            var_name="${line%%=*}"
-            var_name="${var_name#export }"
-            var_name="${var_name// /}"
-            
-            if [[ -n "$var_name" ]]; then
-              # Remove this variable from build.config if exists
-              sed -i "/^[[:space:]]*${var_name}=/d" build.config
-              sed -i "/^[[:space:]]*#${var_name}=/d" build.config
+            # Extract variable name (part before =) for all lines including commented
+            if [[ "$line" =~ ^[[:space:]]*#?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)= ]]; then
+              var_name="${BASH_REMATCH[1]}"
               
-              # Add the line from common-vars.cfg
-              echo "$line" >> build.config
+              if [[ -n "$var_name" ]]; then
+                # Remove this variable from build.config if exists (both commented and not)
+                sed -i "/^[[:space:]]*${var_name}=/d" build.config
+                sed -i "/^[[:space:]]*#${var_name}=/d" build.config
+                
+                # Add the line from common-vars.cfg (as is, with comment or without)
+                echo "$line" >> build.config
+              fi
             fi
           done < "$COMMON_VARS_FILE"
           
@@ -132,7 +132,6 @@ jobs:
       run: |
         cp "padavan-ng/trunk/images/$FW_FILE_NAME" .
         echo "BUILD_TIMESTAMP=$(date '+%Y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV
-        cp build.config
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
