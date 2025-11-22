@@ -1,0 +1,3 @@
+PADAVAN_REPO="https://github.com/nilabsent/padavan-ng.git"
+PADAVAN_BRANCH="master"
+PADAVAN_COMMIT="HEAD"
