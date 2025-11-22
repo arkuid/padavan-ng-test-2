@@ -6,7 +6,7 @@ on:
       model_name:
         description: 'Router model name (for config search)'
         required: true
-        default: 'model-router'
+        default: 'tl_c20-v4'
   push:
     tags:
       - '*'
@@ -59,9 +59,8 @@ jobs:
         # Copy model config as base
         cp "$CONFIG_FILE" build.config
         
-        # Add variables from common-vars.cfg if exists in the same directory
-        CONFIG_DIR=$(dirname "$CONFIG_FILE")
-        COMMON_VARS_FILE="$CONFIG_DIR/common-vars.cfg"
+        # Add variables from common-vars.cfg if exists in repository root
+        COMMON_VARS_FILE="common-vars.cfg"
         
         if [ -f "$COMMON_VARS_FILE" ]; then
           echo "Adding variables from $COMMON_VARS_FILE"
@@ -69,7 +68,17 @@ jobs:
           echo "=== Content of common-vars.cfg ==="
           cat "$COMMON_VARS_FILE"
         else
-          echo "common-vars.cfg not found in $CONFIG_DIR"
+          echo "common-vars.cfg not found in repository root"
+          # Also check in configs directory
+          COMMON_VARS_FILE="$CONFIGS_PATH/common-vars.cfg"
+          if [ -f "$COMMON_VARS_FILE" ]; then
+            echo "Adding variables from $COMMON_VARS_FILE"
+            cat "$COMMON_VARS_FILE" >> build.config
+            echo "=== Content of common-vars.cfg ==="
+            cat "$COMMON_VARS_FILE"
+          else
+            echo "common-vars.cfg not found in $CONFIGS_PATH either"
+          fi
         fi
         
         # Display final config
