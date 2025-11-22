@@ -20,17 +20,28 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Clone configs repository
+    - name: Get variables
+      id: get_vars
       run: |
-        git clone https://github.com/nilabsent/padavan-ng.git configs-repo
-        echo "CONFIGS_PATH=configs-repo/trunk/configs/templates" >> $GITHUB_ENV
+        sed -i 's|\r$||g' variables
+        . variables
+        for v in "${!PADAVAN_@}" "${!CONFIG_@}"; do
+          echo "$v=${!v}" >> $GITHUB_ENV
+        done
+
+    - name: Clone padavan-ng repository
+      run: |
+        git config --global --add safe.directory '*'
+        git clone -b "$PADAVAN_BRANCH" "$PADAVAN_REPO" padavan-ng
+        git -C padavan-ng checkout "$PADAVAN_COMMIT"
+        echo "CONFIGS_PATH=padavan-ng/trunk/configs/templates" >> $GITHUB_ENV
 
     - name: Find and process model configuration
       id: find_model_config
       run: |
         # Construct config filename from model name
         CONFIG_FILENAME="${{ github.event.inputs.model_name }}.config"
-        echo "Looking for config file: $CONFIG_FILENAME"
+        echo "Looking for config file: $CONFIG_FILENAME in $CONFIGS_PATH"
         
         # Find model config file in templates directory
         CONFIG_FILE=$(find "$CONFIGS_PATH" -name "$CONFIG_FILENAME" -type f | head -1)
@@ -61,19 +72,16 @@ jobs:
         echo "Final build.config:"
         cat build.config
 
-    - name: Get variables
+    - name: Load config variables
       run: |
-        sed -i 's|\r$||g' variables build.config
-        . <(cat variables build.config)
+        sed -i 's|\r$||g' build.config
+        . build.config
         for v in "${!PADAVAN_@}" "${!CONFIG_@}"; do
           echo "$v=${!v}" >> $GITHUB_ENV
         done
 
-    - name: Download sources and toolchain
+    - name: Download toolchain
       run: |
-        git config --global --add safe.directory '*'
-        git clone -b "$PADAVAN_BRANCH" "$PADAVAN_REPO"
-        git -C padavan-ng checkout "$PADAVAN_COMMIT"
         wget -qO- "$PADAVAN_TOOLCHAIN_URL" | tar -C padavan-ng --zstd -xf -
 
     - name: Build firmware
@@ -92,7 +100,6 @@ jobs:
       run: |
         cp "padavan-ng/trunk/images/$FW_FILE_NAME" .
         echo "BUILD_TIMESTAMP=$(date '+%Y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV
-        # Also save the processed config
         cp build.config final-config.txt
 
     - name: Upload artifacts
@@ -107,7 +114,7 @@ jobs:
 
     - name: Check firmware size
       run: |
-        partitions=padavan-ng/trunk/configs/boards/$CONFIG_VENDOR/$CONFIG_FIRMWARE_PRODUCT_ID/partitions.config
+        partitions="padavan-ng/trunk/configs/boards/$CONFIG_VENDOR/$CONFIG_FIRMWARE_PRODUCT_ID/partitions.config"
         max_fw_size="$(awk '/Firmware/ { getline; getline; sub(",", ""); print strtonum($2); }' "$partitions")"
         fw_size="$(stat -c %s "$FW_FILE_NAME")"
 
