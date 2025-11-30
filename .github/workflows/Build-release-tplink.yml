@@ -195,7 +195,7 @@ jobs:
         fi
 
         # Копируем дополнительные файлы
-        if [ -d "$WORKSPACE_PATH/routers/$ROUTER_MODEL" ] && [ "$(ls -A $WORKSPACE_PATH/routers/$ROUTER_MODEL)" ]; then
+        if [ -d "$WORKSPACE_PATH/routers/configs/$ROUTER_MODEL" ] && [ "$(ls -A $WORKSPACE_PATH/routers/configs/$ROUTER_MODEL)" ]; then
           echo "Copying config files for $ROUTER_MODEL..."
           cp -rv $WORKSPACE_PATH/routers/configs/$ROUTER_MODEL/* padavan-ng/trunk/configs/
           cp -rv $WORKSPACE_PATH/logo/* padavan-ng/trunk/user/www/logo/
