@@ -1,0 +1,16 @@
+--- a/trunk/libs/libluajit/Makefile
++++ b/trunk/libs/libluajit/Makefile
+@@ -35,5 +35,13 @@ install:
+ 		DPREFIX=$(STAGEDIR) \
+ 		PREFIX=$(STAGEDIR) \
+ 		DESTDIR=$(STAGEDIR);
++	# Create LuaJIT compatibility symlinks for backward compatibility
++	cd $(STAGEDIR)/include && \
++	ln -sf luajit-2.1/lua.h . && \
++	ln -sf luajit-2.1/lualib.h . && \
++	ln -sf luajit-2.1/lauxlib.h . && \
++	ln -sf luajit-2.1/luajit.h . && \
++	ln -sf luajit-2.1/luaconf.h . && \
++	ln -sf luajit-2.1/lua.hpp .
+ 
+ romfs:

@@ -1,0 +1,243 @@
+name: Build Toolchain from padavan-ng 
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 1 * *' 
+
+env:
+  TOOLCHAIN_FILE: toolchain.tzst
+  TOOLCHAIN_NAME: padavan-toolchain
+  PADAVAN_REPO: https://github.com/nilabsent/padavan-ng.git
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should-build: ${{ steps.check.outputs.should-build }}
+      commit-date: ${{ steps.check.outputs.commit-date }}
+      commit-sha: ${{ steps.check.outputs.commit-sha }}
+    steps:
+    - name: Check for changes in padavan-ng repository
+      id: check
+      run: |
+        echo "=== Debug: Checking for changes ==="
+        
+        # Get last commit from padavan-ng repository
+        PADAVAN_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/nilabsent/padavan-ng/commits?path=toolchain&per_page=1")
+        
+        # Check if we got a valid response
+        if echo "$PADAVAN_RESPONSE" | jq -e '.[0]' > /dev/null 2>&1; then
+          PADAVAN_LAST_COMMIT=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].commit.committer.date')
+          PADAVAN_COMMIT_SHA=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].sha')
+          echo "Last padavan-ng commit date: $PADAVAN_LAST_COMMIT"
+          echo "Last padavan-ng commit SHA: $PADAVAN_COMMIT_SHA"
+          
+          # Format date for release tag (YYYYMMDD format)
+          COMMIT_DATE_FORMATTED=$(date -d "$PADAVAN_LAST_COMMIT" +'%Y%m%d')
+          echo "commit-date=$COMMIT_DATE_FORMATTED" >> $GITHUB_OUTPUT
+          echo "commit-sha=$PADAVAN_COMMIT_SHA" >> $GITHUB_OUTPUT
+        else
+          echo "Error accessing padavan-ng repository, building anyway"
+          echo "should-build=true" >> $GITHUB_OUTPUT
+          echo "commit-date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "commit-sha=unknown" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Get ALL releases from OUR repository to check if we already have this commit
+        ALL_RELEASES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases" || echo '[]')
+        
+        echo "Number of releases found: $(echo "$ALL_RELEASES" | jq length)"
+        
+        # Check if we already have a release built from this specific commit
+        ALREADY_BUILT=false
+        for release in $(echo "$ALL_RELEASES" | jq -r '.[] | @base64'); do
+          RELEASE_BODY=$(echo "$release" | base64 --decode | jq -r '.body')
+          # Ищем полный коммит в описании релиза
+          if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA"; then
+            echo "Found existing release for commit $PADAVAN_COMMIT_SHA"
+            ALREADY_BUILT=true
+            break
+          fi
+          # Также проверяем по короткому хешу (первые 8 символов)
+          SHORT_SHA="${PADAVAN_COMMIT_SHA:0:8}"
+          if echo "$RELEASE_BODY" | grep -q "$SHORT_SHA"; then
+            echo "Found existing release for short commit $SHORT_SHA"
+            ALREADY_BUILT=true
+            break
+          fi
+        done
+        
+        if [ "$ALREADY_BUILT" = true ]; then
+          echo "Toolchain for commit $PADAVAN_COMMIT_SHA already exists. Skipping build."
+          echo "should-build=false" >> $GITHUB_OUTPUT
+        else
+          echo "No existing toolchain for commit $PADAVAN_COMMIT_SHA. Should build."
+          echo "should-build=true" >> $GITHUB_OUTPUT
+        fi
+
+  build-toolchain:
+    runs-on: ubuntu-22.04
+    needs: check-changes
+    if: needs.check-changes.outputs.should-build == 'true'
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Clone padavan-ng repository
+      run: |
+        git clone --depth 1 --branch master ${{ env.PADAVAN_REPO }} padavan-src
+        
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install --no-install-recommends -y \
+            autoconf \
+            automake \
+            bison \
+            bzip2 \
+            ca-certificates \
+            flex \
+            g++ \
+            gawk \
+            gcc \
+            git \
+            gperf \
+            help2man \
+            libncurses5-dev \
+            libstdc++6 \
+            libtool \
+            libtool-bin \
+            make \
+            patch \
+            texinfo \
+            unzip \
+            wget \
+            xz-utils \
+            zstd
+
+    - name: Build toolchain from padavan-ng
+      run: |
+        cd padavan-src/toolchain
+        chmod +x *.sh
+        ./clean_sources.sh
+        ./build_toolchain.sh
+        
+    - name: Create toolchain archive
+      run: |
+        mkdir -p temp_toolchain/toolchain
+        cp -r padavan-src/toolchain/out temp_toolchain/toolchain/
+        tar -I "zstd -9 -T0" -cf ${{ env.TOOLCHAIN_FILE }} -C temp_toolchain toolchain
+        echo "Archive created: ${{ env.TOOLCHAIN_FILE }}"
+        ls -la ${{ env.TOOLCHAIN_FILE }}
+        
+    - name: Upload toolchain as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.TOOLCHAIN_NAME }}
+        path: ${{ env.TOOLCHAIN_FILE }}
+        retention-days: 30
+
+    - name: Get current date for release body
+      id: date
+      run: |
+        CURRENT_DATE=$(date +'%Y-%m-%d %H:%M:%S')
+        echo "current-date=$CURRENT_DATE" >> $GITHUB_OUTPUT
+        
+    - name: Delete existing latest release
+      run: |
+        # Check if latest release exists and delete it
+        LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/tags/latest" || echo '{}')
+        
+        LATEST_RELEASE_ID=$(echo "$LATEST_RELEASE" | jq -r '.id // empty')
+        
+        if [ ! -z "$LATEST_RELEASE_ID" ] && [ "$LATEST_RELEASE_ID" != "null" ]; then
+          echo "Deleting existing latest release (ID: $LATEST_RELEASE_ID)"
+          curl -s -X DELETE \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/$LATEST_RELEASE_ID"
+        fi
+        
+        # Also delete the latest tag
+        curl -s -X DELETE \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/latest" || echo "Tag may not exist"
+
+    - name: Create release with asset
+      run: |
+        # Create a temporary file with the release data
+        cat > release_data.json << EOF
+        {
+          "tag_name": "latest",
+          "name": "Latest Padavan Toolchain",
+          "body": "Latest automatically built toolchain from nilabsent/padavan-ng\n\n**Source:** ${{ env.PADAVAN_REPO }}\n**Build Date:** ${{ steps.date.outputs.current-date }}\n**Based on padavan-ng commit:** ${{ needs.check-changes.outputs.commit-sha }}\n**Commit Date:** ${{ needs.check-changes.outputs.commit-date }}\n\nUse this URL to always get the newest toolchain:\n\`https://github.com/${{ github.repository }}/releases/latest/download/${{ env.TOOLCHAIN_FILE }}\`",
+          "draft": false,
+          "prerelease": false
+        }
+        EOF
+        
+        # First create the release
+        RELEASE_RESPONSE=$(curl -s -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          --data-binary @release_data.json \
+          "https://api.github.com/repos/${{ github.repository }}/releases")
+        
+        echo "Release response: $RELEASE_RESPONSE"
+        
+        # Get the upload URL from the response
+        UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | jq -r '.upload_url' | sed 's/{.*}//')
+        RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r '.id')
+        
+        echo "Upload URL: $UPLOAD_URL"
+        echo "Release ID: $RELEASE_ID"
+        
+        if [ "$UPLOAD_URL" != "null" ] && [ ! -z "$UPLOAD_URL" ]; then
+          # Upload the asset
+          echo "Uploading asset ${{ env.TOOLCHAIN_FILE }}"
+          ASSET_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"${{ env.TOOLCHAIN_FILE }}" \
+            "$UPLOAD_URL?name=${{ env.TOOLCHAIN_FILE }}")
+          
+          echo "Asset upload response: $ASSET_RESPONSE"
+          
+          # Check if upload was successful
+          if echo "$ASSET_RESPONSE" | jq -e '.browser_download_url' > /dev/null 2>&1; then
+            DOWNLOAD_URL=$(echo "$ASSET_RESPONSE" | jq -r '.browser_download_url')
+            echo "✅ Asset uploaded successfully: $DOWNLOAD_URL"
+          else
+            echo "❌ Asset upload failed"
+            exit 1
+          fi
+        else
+          echo "❌ Failed to create release or get upload URL"
+          exit 1
+        fi
+
+    - name: Verify release asset
+      run: |
+        echo "Waiting 10 seconds for GitHub to process the release..."
+        sleep 10
+        
+        # Check if the asset is accessible
+        DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/latest/download/${{ env.TOOLCHAIN_FILE }}"
+        echo "Checking: $DOWNLOAD_URL"
+        
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L "$DOWNLOAD_URL")
+        echo "HTTP Status: $HTTP_STATUS"
+        
+        if [ "$HTTP_STATUS" -eq 200 ]; then
+          echo "✅ SUCCESS: Asset is accessible at $DOWNLOAD_URL"
+          echo "You can now use this URL in other workflows:"
+          echo "wget $DOWNLOAD_URL"
+        else
+          echo "❌ ERROR: Asset is not accessible (HTTP $HTTP_STATUS)"
+          echo "The download URL may not work yet. Try again in a few minutes."
+        fi
