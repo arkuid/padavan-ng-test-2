@@ -124,13 +124,6 @@ jobs:
         if [ -d "patches" ]; then
           find patches -type f -name "*.patch" | head -10
         fi
-        echo "=== Logo directory ==="
-        if [ -d "logo" ]; then
-          ls -la logo/
-          echo "Logo files found: $(find logo -type f | wc -l)"
-        else
-          echo "No logo directory found"
-        fi
 
     - name: Set router model
       run: |
