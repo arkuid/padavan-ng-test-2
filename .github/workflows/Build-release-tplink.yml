@@ -158,7 +158,7 @@ jobs:
         
         # Скачиваем toolchain
         cd padavan-ng
-        wget -q "https://github.com/arkuid/padavan-ng-test/releases/download/latest/toolchain.tzst"
+        wget -q "https://github.com/arkuid/padavan-ng-test-2/releases/download/latest/toolchain.tzst"
         tar --zstd -xf toolchain.tzst
         rm toolchain.tzst
         
