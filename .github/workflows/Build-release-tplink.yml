@@ -28,6 +28,7 @@ jobs:
     steps:
     - name: Check for changes in padavan-ng trunk
       id: check
+      shell: bash
       run: |
         echo "=== Debug: Checking for changes in padavan-ng trunk ==="
         
@@ -51,7 +52,11 @@ jobs:
           echo "commit-date=$COMMIT_DATE_FORMATTED" >> $GITHUB_OUTPUT
           echo "commit-sha=$PADAVAN_COMMIT_SHA" >> $GITHUB_OUTPUT
           echo "commit-short-sha=$PADAVAN_SHORT_SHA" >> $GITHUB_OUTPUT
-          echo "latest-commit-message=$PADAVAN_COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+          
+          # Обрабатываем многострочное сообщение коммита
+          # Удаляем переносы строк и экранируем специальные символы
+          ESCAPED_MESSAGE=$(echo "$PADAVAN_COMMIT_MESSAGE" | tr '\n' ' ' | sed 's/"/\\"/g' | sed 's/\r//g')
+          echo "latest-commit-message=$ESCAPED_MESSAGE" >> $GITHUB_OUTPUT
         else
           echo "Error accessing padavan-ng repository, building anyway"
           CURRENT_DATE=$(date +'%Y%m%d')
@@ -67,7 +72,8 @@ jobs:
         ALL_RELEASES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/releases" || echo '[]')
         
-        echo "Number of releases found: $(echo "$ALL_RELEASES" | jq length)"
+        RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
+        echo "Number of releases found: $RELEASE_COUNT"
         
         # Определяем модель роутера (для workflow_dispatch или schedule)
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
