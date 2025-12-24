@@ -92,7 +92,7 @@
 
         .search-box {
             flex: 1;
-            min-width: 0; /* Важно для flexbox */
+            min-width: 0;
         }
 
         .search-box input {
@@ -544,6 +544,7 @@
         const API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`;
         const UPDATE_INTERVAL = 20 * 60 * 1000; // 20 минут в миллисекундах
         const STORAGE_KEY = 'padavan_ng_last_update';
+        const DATA_STORAGE_KEY = 'padavan_ng_cached_data';
         
         // Переменные состояния
         let allReleases = [];
@@ -577,12 +578,45 @@
             
             if (timeSinceLastUpdate > UPDATE_INTERVAL) {
                 // Прошло больше 20 минут - загружаем новые данные
-                loadReleases();
+                loadReleases(false);
             } else {
-                // Еще не прошло 20 минут - используем кэш и планируем следующее обновление
+                // Еще не прошло 20 минут - загружаем кэшированные данные
+                loadCachedData();
+                
+                // Планируем следующее обновление
                 const timeUntilNextUpdate = UPDATE_INTERVAL - timeSinceLastUpdate;
                 scheduleNextUpdate(timeUntilNextUpdate);
                 showInfo(`Следующее обновление через ${formatTime(timeUntilNextUpdate)}`);
+            }
+        }
+        
+        // Загрузка кэшированных данных
+        function loadCachedData() {
+            try {
+                const cachedData = localStorage.getItem(DATA_STORAGE_KEY);
+                if (cachedData) {
+                    const data = JSON.parse(cachedData);
+                    allReleases = data.allReleases || [];
+                    toolchainReleases = data.toolchainReleases || [];
+                    firmwareReleases = data.firmwareReleases || [];
+                    routerModels = new Set(data.routerModels || []);
+                    
+                    updateUI();
+                    
+                    // Обновляем время последнего обновления
+                    const lastUpdateTime = getLastUpdateTime();
+                    if (lastUpdateTime > 0) {
+                        lastUpdate.textContent = new Date(lastUpdateTime).toLocaleString('ru-RU');
+                    }
+                    
+                    showLoading(false);
+                } else {
+                    // Нет кэшированных данных - загружаем новые
+                    loadReleases(false);
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки кэшированных данных:', error);
+                loadReleases(false);
             }
         }
         
@@ -591,12 +625,6 @@
             showLoading(true);
             hideError();
             hideInfo();
-            
-            // Если не форсированное обновление и данные уже есть, не показываем загрузку
-            if (!force && allReleases.length > 0) {
-                showLoading(false);
-                return;
-            }
             
             try {
                 const response = await fetch(API_URL);
@@ -619,6 +647,9 @@
                 const updateTime = new Date().getTime();
                 localStorage.setItem(STORAGE_KEY, updateTime.toString());
                 
+                // Сохраняем данные в кэш
+                saveDataToCache();
+                
                 // Обновляем время последнего обновления
                 lastUpdate.textContent = new Date(updateTime).toLocaleString('ru-RU');
                 
@@ -631,8 +662,28 @@
             } catch (error) {
                 console.error('Ошибка загрузки данных:', error);
                 showError(`Не удалось загрузить данные: ${error.message}`);
+                
+                // Пробуем загрузить кэшированные данные
+                if (!force) {
+                    loadCachedData();
+                }
             } finally {
                 showLoading(false);
+            }
+        }
+        
+        // Сохранение данных в кэш
+        function saveDataToCache() {
+            try {
+                const dataToCache = {
+                    allReleases: allReleases,
+                    toolchainReleases: toolchainReleases,
+                    firmwareReleases: firmwareReleases,
+                    routerModels: Array.from(routerModels)
+                };
+                localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(dataToCache));
+            } catch (error) {
+                console.error('Ошибка сохранения данных в кэш:', error);
             }
         }
         
@@ -786,7 +837,6 @@
             const dateStr = item.date.toLocaleDateString('ru-RU');
             
             // Парсим дополнительные детали из описания
-            let detailsHtml = '';
             let commitHash = '';
             let lastCommitMessage = '';
             let buildDate = '';
@@ -798,7 +848,7 @@
                     if (line.includes('Source commit:')) {
                         const match = line.match(/Source commit:\s*([a-f0-9]+)/);
                         if (match && match[1]) {
-                            commitHash = match[1].substring(0, 8); // Берем только первые 8 символов
+                            commitHash = match[1].substring(0, 8);
                         }
                     } else if (line.includes('Last commit message:')) {
                         const match = line.match(/Last commit message:\s*(.+)/);
@@ -820,7 +870,7 @@
             }
             
             // Формируем HTML для деталей
-            detailsHtml = `
+            let detailsHtml = `
                 <div class="detail-row">
                     <span class="detail-label">Файл:</span>
                     <span class="detail-value">${escapeHtml(item.fileName)}</span>
@@ -1014,7 +1064,7 @@
             
             // Устанавливаем новый таймер
             nextUpdateTimer = setTimeout(() => {
-                loadReleases();
+                loadReleases(false);
             }, delay);
             
             // Обновляем информацию о следующем обновлении
@@ -1055,11 +1105,9 @@
             forceRefreshBtn.addEventListener('click', () => {
                 // Очищаем кэш и загружаем данные
                 localStorage.removeItem(STORAGE_KEY);
+                localStorage.removeItem(DATA_STORAGE_KEY);
                 loadReleases(true);
             });
-            
-            // Автоматическое применение фильтров при изменении данных
-            searchInput.addEventListener('keyup', applyFilters);
         }
     </script>
 </body>
