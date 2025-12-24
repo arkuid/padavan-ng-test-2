@@ -579,10 +579,6 @@
         // Конфигурация
         const REPO_OWNER = 'arkuid';
         const REPO_NAME = 'padavan-ng-test-2';
-        
-        // Используем CORS proxy для обхода ограничений
-        const API_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`;
-        
         const DATA_STORAGE_KEY = 'padavan_ng_cached_data';
         
         // Переменные состояния
@@ -626,7 +622,11 @@
                 const cachedData = localStorage.getItem(DATA_STORAGE_KEY);
                 if (cachedData) {
                     const data = JSON.parse(cachedData);
-                    return data && Array.isArray(data.allReleases) && data.allReleases.length > 0;
+                    // Проверяем структуру данных
+                    return data && 
+                           Array.isArray(data.allReleases) && 
+                           data.allReleases.length > 0 &&
+                           data.timestamp;
                 }
             } catch (error) {
                 console.log('Ошибка проверки кэша:', error);
@@ -652,6 +652,14 @@
                     toolchainReleases = data.toolchainReleases || [];
                     firmwareReleases = data.firmwareReleases || [];
                     routerModels = new Set(data.routerModels || []);
+                    
+                    // ВАЖНО: если массивы toolchainReleases и firmwareReleases пустые,
+                    // но есть allReleases, обрабатываем данные заново
+                    if (allReleases.length > 0 && 
+                        (toolchainReleases.length === 0 || firmwareReleases.length === 0)) {
+                        console.log('Переобработка кэшированных данных...');
+                        processReleases();
+                    }
                     
                     // Скрываем приветственное сообщение, показываем данные
                     initMessage.style.display = 'none';
@@ -683,6 +691,9 @@
             try {
                 console.log('Загрузка данных с GitHub...');
                 
+                // Используем CORS proxy
+                const API_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`;
+                
                 const response = await fetch(API_URL, {
                     headers: {
                         'Accept': 'application/json'
@@ -707,10 +718,19 @@
                 
                 console.log(`Получено ${releases.length} релизов с GitHub`);
                 allReleases = releases;
+                
+                // ВАЖНО: сначала обрабатываем данные
                 processReleases();
                 
-                // Сохраняем данные в кэш
+                // Сохраняем в кэш
                 saveDataToCache();
+                
+                console.log('Данные сохранены в кэш:', {
+                    allReleases: allReleases.length,
+                    toolchainReleases: toolchainReleases.length,
+                    firmwareReleases: firmwareReleases.length,
+                    routerModels: routerModels.size
+                });
                 
                 // Скрываем приветственное сообщение, показываем данные
                 initMessage.style.display = 'none';
@@ -744,6 +764,26 @@
         // Сохранение данных в кэш
         function saveDataToCache() {
             try {
+                // Убедимся что данные есть
+                if (!allReleases || !Array.isArray(allReleases)) {
+                    console.error('Нет данных для сохранения в кэш');
+                    return;
+                }
+                
+                // Дополнительная проверка: если массивы toolchainReleases и firmwareReleases пустые,
+                // но есть allReleases, обрабатываем данные заново
+                if (allReleases.length > 0 && 
+                    (toolchainReleases.length === 0 || firmwareReleases.length === 0)) {
+                    console.log('Обнаружены необработанные данные, запускаем processReleases...');
+                    processReleases();
+                }
+                
+                console.log('Сохранение в кэш:', {
+                    releases: allReleases.length,
+                    toolchain: toolchainReleases.length,
+                    firmware: firmwareReleases.length
+                });
+                
                 const dataToCache = {
                     allReleases: allReleases,
                     toolchainReleases: toolchainReleases,
@@ -751,15 +791,34 @@
                     routerModels: Array.from(routerModels),
                     timestamp: Date.now()
                 };
+                
+                // Сохраняем
                 localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(dataToCache));
-                console.log('Данные сохранены в кэш');
+                
+                // Проверяем что сохранилось
+                const saved = localStorage.getItem(DATA_STORAGE_KEY);
+                console.log('Проверка сохранения:', saved ? 'Успешно' : 'Не удалось');
+                
             } catch (error) {
                 console.error('Ошибка сохранения в кэш:', error);
+                
+                // Пробуем сохранить хотя бы основные данные
+                try {
+                    const minimalData = {
+                        allReleases: allReleases,
+                        timestamp: Date.now()
+                    };
+                    localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(minimalData));
+                    console.log('Сохранены минимальные данные');
+                } catch (e) {
+                    console.error('Даже минимальное сохранение не удалось:', e);
+                }
             }
         }
         
         // Обработка релизов
         function processReleases() {
+            console.log('Начало обработки релизов...');
             toolchainReleases = [];
             firmwareReleases = [];
             routerModels.clear();
@@ -798,6 +857,12 @@
             });
             
             firmwareReleases.sort((a, b) => b.date - a.date);
+            
+            console.log('Обработка завершена:', {
+                toolchain: toolchainReleases.length,
+                firmware: firmwareReleases.length,
+                models: routerModels.size
+            });
         }
         
         // Извлечение модели роутера
