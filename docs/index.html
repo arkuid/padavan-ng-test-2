@@ -730,6 +730,32 @@
                 firmwareReleases = data.firmwareReleases || [];
                 routerModels = new Set(data.routerModels || []);
                 
+                console.log('Загружено из кэша:', {
+                    allReleases: allReleases.length,
+                    toolchainReleases: toolchainReleases.length,
+                    firmwareReleases: firmwareReleases.length,
+                    routerModels: routerModels.size
+                });
+                
+                // ВАЖНО: Преобразуем строковые даты в объекты Date при загрузке из кэша
+                if (toolchainReleases.length > 0 && !(toolchainReleases[0].date instanceof Date)) {
+                    console.log('Преобразуем даты в toolchainReleases...');
+                    toolchainReleases.forEach(item => {
+                        if (item.date && !(item.date instanceof Date)) {
+                            item.date = new Date(item.date);
+                        }
+                    });
+                }
+                
+                if (firmwareReleases.length > 0 && !(firmwareReleases[0].date instanceof Date)) {
+                    console.log('Преобразуем даты в firmwareReleases...');
+                    firmwareReleases.forEach(item => {
+                        if (item.date && !(item.date instanceof Date)) {
+                            item.date = new Date(item.date);
+                        }
+                    });
+                }
+                
                 // Если данные не обработаны, обрабатываем их
                 if (allReleases.length > 0 && 
                     (toolchainReleases.length === 0 || firmwareReleases.length === 0)) {
@@ -971,13 +997,14 @@
                 }
                 
                 release.assets.forEach(asset => {
+                    // ВАЖНО: Создаем объект Date здесь
                     const fileItem = {
                         id: `${release.id}-${asset.id}`,
                         name: release.name || 'Без названия',
                         fileName: asset.name,
                         downloadUrl: asset.browser_download_url,
                         size: formatFileSize(asset.size),
-                        date: new Date(asset.created_at || release.created_at),
+                        date: new Date(asset.created_at || release.created_at || Date.now()), // Создаем объект Date
                         description: release.body || '',
                         type: isToolchain ? 'toolchain' : 'firmware'
                     };
@@ -995,7 +1022,13 @@
                 });
             });
             
-            firmwareReleases.sort((a, b) => b.date - a.date);
+            // Сортируем по дате
+            firmwareReleases.sort((a, b) => {
+                // Убедимся что это объекты Date
+                const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+                const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+                return dateB - dateA;
+            });
             
             console.log('Обработка завершена:', {
                 toolchain: toolchainReleases.length,
@@ -1102,7 +1135,18 @@
             card.dataset.name = item.name.toLowerCase();
             
             const isToolchain = item.type === 'toolchain';
-            const dateStr = item.date.toLocaleDateString('ru-RU');
+            
+            // ВАЖНО: Преобразуем date в объект Date если это необходимо
+            let dateObj;
+            if (item.date instanceof Date) {
+                dateObj = item.date;
+            } else if (typeof item.date === 'string') {
+                dateObj = new Date(item.date);
+            } else {
+                dateObj = new Date(); // fallback
+            }
+            
+            const dateStr = dateObj.toLocaleDateString('ru-RU');
             
             // Парсим дополнительные детали из описания
             let commitHash = '';
