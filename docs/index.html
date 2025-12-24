@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Padavan-ng Releases</title>
     <style>
+        /* Стили остаются без изменений */
         :root {
             --bg-color: #ffffff;
             --text-color: #1a1a1a;
@@ -528,8 +529,12 @@
         <div id="init-message" class="init-message">
             <h3>Добро пожаловать!</h3>
             <p>На этой странице отображаются прошивки и toolchain из GitHub Releases.</p>
-            <p>При первом посещении необходимо загрузить данные с GitHub.</p>
+            <p id="cache-status">При первом посещении необходимо загрузить данные с GitHub.</p>
             <button id="init-btn" class="init-btn">📥 Загрузить данные с GitHub</button>
+            <div id="cache-actions" style="margin-top: 15px; display: none;">
+                <button id="load-cache-btn" class="refresh-btn secondary" style="margin: 5px;">📂 Загрузить из кэша</button>
+                <button id="clear-cache-btn" class="refresh-btn secondary" style="margin: 5px; background: #dc3545; color: white;">🗑️ Очистить кэш</button>
+            </div>
         </div>
 
         <!-- Секции с данными изначально скрыты -->
@@ -580,6 +585,7 @@
         const REPO_OWNER = 'arkuid';
         const REPO_NAME = 'padavan-ng-test-2';
         const DATA_STORAGE_KEY = 'padavan_ng_cached_data';
+        const CACHE_MAX_AGE = 2 * 60 * 60 * 1000; // 2 часа в миллисекундах
         
         // Переменные состояния
         let allReleases = [];
@@ -594,90 +600,190 @@
         const errorMessage = document.getElementById('error-message');
         const infoMessage = document.getElementById('info-message');
         const initMessage = document.getElementById('init-message');
+        const cacheStatus = document.getElementById('cache-status');
+        const cacheActions = document.getElementById('cache-actions');
         const dataSections = document.getElementById('data-sections');
         const initBtn = document.getElementById('init-btn');
+        const loadCacheBtn = document.getElementById('load-cache-btn');
+        const clearCacheBtn = document.getElementById('clear-cache-btn');
         const refreshBtn = document.getElementById('refresh-btn');
         const forceRefreshBtn = document.getElementById('force-refresh-btn');
         const lastUpdate = document.getElementById('last-update');
         
         // Инициализация
-        document.addEventListener('DOMContentLoaded', () => {
-            // Проверяем, есть ли сохраненные данные
-            const hasCachedData = checkForCachedData();
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Инициализация приложения...');
             
-            if (hasCachedData) {
-                // Есть кэш - сразу показываем данные
-                showCachedData();
+            // Сначала настраиваем обработчики событий
+            setupEventListeners();
+            
+            // Проверяем наличие кэша и его актуальность
+            const cacheInfo = await checkCacheStatus();
+            
+            if (cacheInfo.hasCache) {
+                console.log('Найден кэш:', cacheInfo);
+                
+                if (cacheInfo.isFresh) {
+                    // Кэш свежий - автоматически загружаем
+                    console.log('Кэш свежий, загружаем автоматически');
+                    showInfo('Загружаем кэшированные данные...');
+                    await loadFromCache();
+                } else {
+                    // Кэш устарел - предлагаем выбор
+                    console.log('Кэш устарел, предлагаем выбор');
+                    showCacheOptions(cacheInfo);
+                }
             } else {
                 // Нет кэша - показываем приветственное сообщение
-                showInitMessage();
+                console.log('Кэш не найден');
+                showInitMessage(false);
             }
-            
-            setupEventListeners();
         });
         
-        // Проверка наличия кэшированных данных
-        function checkForCachedData() {
+        // Проверка статуса кэша
+        async function checkCacheStatus() {
             try {
                 const cachedData = localStorage.getItem(DATA_STORAGE_KEY);
-                if (cachedData) {
-                    const data = JSON.parse(cachedData);
-                    // Проверяем структуру данных
-                    return data && 
-                           Array.isArray(data.allReleases) && 
-                           data.allReleases.length > 0 &&
-                           data.timestamp;
+                if (!cachedData) {
+                    return { hasCache: false };
                 }
+                
+                const data = JSON.parse(cachedData);
+                
+                if (!data || !data.timestamp || !Array.isArray(data.allReleases)) {
+                    console.log('Кэш поврежден');
+                    return { hasCache: false };
+                }
+                
+                const cacheAge = Date.now() - data.timestamp;
+                const isFresh = cacheAge < CACHE_MAX_AGE;
+                
+                return {
+                    hasCache: true,
+                    isFresh: isFresh,
+                    age: cacheAge,
+                    timestamp: data.timestamp,
+                    releaseCount: data.allReleases?.length || 0,
+                    ageHours: Math.round(cacheAge / (60 * 60 * 1000) * 10) / 10
+                };
+                
             } catch (error) {
-                console.log('Ошибка проверки кэша:', error);
+                console.error('Ошибка проверки кэша:', error);
+                return { hasCache: false };
             }
-            return false;
         }
         
         // Показать приветственное сообщение
-        function showInitMessage() {
+        function showInitMessage(hasCache = false) {
             initMessage.style.display = 'block';
             dataSections.style.display = 'none';
             document.getElementById('footer-content').style.display = 'none';
+            
+            if (hasCache) {
+                cacheActions.style.display = 'block';
+                initBtn.style.marginBottom = '10px';
+            } else {
+                cacheActions.style.display = 'none';
+                initBtn.style.marginBottom = '0';
+            }
         }
         
-        // Показать кэшированные данные
-        function showCachedData() {
+        // Показать варианты при устаревшем кэше
+        function showCacheOptions(cacheInfo) {
+            initMessage.style.display = 'block';
+            dataSections.style.display = 'none';
+            document.getElementById('footer-content').style.display = 'none';
+            
+            const ageText = cacheInfo.ageHours >= 1 
+                ? `${cacheInfo.ageHours} часов назад` 
+                : `${Math.round(cacheInfo.ageHours * 60)} минут назад`;
+            
+            cacheStatus.innerHTML = `
+                Найден кэш (${cacheInfo.releaseCount} релизов, обновлен ${ageText}).
+                <br>Хотите загрузить из кэша или обновить данные?
+            `;
+            
+            cacheActions.style.display = 'block';
+            initBtn.textContent = '🔄 Обновить данные с GitHub';
+            initBtn.style.marginBottom = '10px';
+        }
+        
+        // Загрузка данных из кэша
+        async function loadFromCache() {
             try {
+                console.log('Загрузка данных из кэша...');
+                showInfo('Загрузка данных из кэша...');
+                
                 const cachedData = localStorage.getItem(DATA_STORAGE_KEY);
-                if (cachedData) {
-                    const data = JSON.parse(cachedData);
+                if (!cachedData) {
+                    throw new Error('Кэш не найден');
+                }
+                
+                const data = JSON.parse(cachedData);
+                
+                if (!data || !Array.isArray(data.allReleases)) {
+                    throw new Error('Кэш поврежден');
+                }
+                
+                allReleases = data.allReleases || [];
+                toolchainReleases = data.toolchainReleases || [];
+                firmwareReleases = data.firmwareReleases || [];
+                routerModels = new Set(data.routerModels || []);
+                
+                // Если данные не обработаны, обрабатываем их
+                if (allReleases.length > 0 && 
+                    (toolchainReleases.length === 0 || firmwareReleases.length === 0)) {
+                    console.log('Обработка кэшированных данных...');
+                    processReleases();
+                }
+                
+                // Скрываем приветственное сообщение, показываем данные
+                initMessage.style.display = 'none';
+                dataSections.style.display = 'block';
+                document.getElementById('footer-content').style.display = 'block';
+                
+                updateUI();
+                
+                // Показываем время последнего обновления
+                if (data.timestamp) {
+                    lastUpdate.textContent = new Date(data.timestamp).toLocaleString('ru-RU');
+                }
+                
+                showInfo(`Загружены кэшированные данные (${allReleases.length} релизов)`);
+                
+                // Пытаемся обновить данные в фоне
+                setTimeout(() => {
+                    updateDataInBackground();
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Ошибка загрузки из кэша:', error);
+                showError(`Ошибка загрузки кэша: ${error.message}`);
+                showInitMessage(false);
+            }
+        }
+        
+        // Обновление данных в фоне
+        async function updateDataInBackground() {
+            try {
+                console.log('Фоновое обновление данных...');
+                const releases = await fetchFromGitHub();
+                if (releases && releases.length > 0) {
+                    console.log(`Фоновое обновление: получено ${releases.length} релизов`);
                     
-                    allReleases = data.allReleases || [];
-                    toolchainReleases = data.toolchainReleases || [];
-                    firmwareReleases = data.firmwareReleases || [];
-                    routerModels = new Set(data.routerModels || []);
+                    allReleases = releases;
+                    processReleases();
+                    saveDataToCache();
                     
-                    // ВАЖНО: если массивы toolchainReleases и firmwareReleases пустые,
-                    // но есть allReleases, обрабатываем данные заново
-                    if (allReleases.length > 0 && 
-                        (toolchainReleases.length === 0 || firmwareReleases.length === 0)) {
-                        console.log('Переобработка кэшированных данных...');
-                        processReleases();
-                    }
-                    
-                    // Скрываем приветственное сообщение, показываем данные
-                    initMessage.style.display = 'none';
-                    dataSections.style.display = 'block';
-                    document.getElementById('footer-content').style.display = 'block';
-                    
+                    // Обновляем интерфейс
                     updateUI();
+                    lastUpdate.textContent = new Date().toLocaleString('ru-RU');
                     
-                    // Показываем время последнего обновления
-                    if (data.timestamp) {
-                        lastUpdate.textContent = new Date(data.timestamp).toLocaleString('ru-RU');
-                    }
-                    
-                    showInfo('Загружены кэшированные данные');
+                    showInfo('Данные обновлены в фоновом режиме');
                 }
             } catch (error) {
-                console.error('Ошибка загрузки кэша:', error);
-                showInitMessage();
+                console.log('Фоновое обновление не удалось:', error.message);
+                // Не показываем ошибку пользователю, это фоновый процесс
             }
         }
         
@@ -691,170 +797,52 @@
             try {
                 console.log('Загрузка данных с GitHub...');
                 
-                // Пробуем загрузить напрямую через GitHub API
-                await loadViaDirectGitHubAPI();
+                const releases = await fetchFromGitHub();
                 
-            } catch (directError) {
-                console.error('Ошибка прямого запроса:', directError);
-                console.log('Пробуем через CORS proxy...');
-                
-                // Если прямой запрос не сработал, пробуем через proxy
-                await loadViaProxy();
-            }
-        }
-        
-        // Загрузка напрямую через GitHub API
-        async function loadViaDirectGitHubAPI() {
-            const API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`;
-            
-            const response = await fetch(API_URL, {
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'User-Agent': 'Padavan-ng-Releases-Page'
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
-            }
-            
-            const releases = await response.json();
-            
-            if (!Array.isArray(releases)) {
-                throw new Error('Некорректный формат данных от GitHub API');
-            }
-            
-            console.log(`Получено ${releases.length} релизов напрямую с GitHub API`);
-            allReleases = releases;
-            
-            // Обрабатываем данные
-            processReleases();
-            
-            // Сохраняем в кэш
-            saveDataToCache();
-            
-            // Обновляем интерфейс
-            initMessage.style.display = 'none';
-            dataSections.style.display = 'block';
-            document.getElementById('footer-content').style.display = 'block';
-            
-            updateUI();
-            lastUpdate.textContent = new Date().toLocaleString('ru-RU');
-            showInfo('Данные успешно загружены напрямую с GitHub API');
-        }
-        
-        // Загрузка через прокси-серверы
-        async function loadViaProxy() {
-            try {
-                // Список прокси-серверов для обхода CORS
-                const proxyUrls = [
-                    `https://corsproxy.io/?${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`,
-                    `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`,
-                    `https://cors.bridged.cc/https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`,
-                    `https://thingproxy.freeboard.io/fetch/https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`,
-                    `https://proxy.cors.sh/https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`
-                ];
-                
-                let lastError = null;
-                
-                // Пробуем каждый прокси по очереди
-                for (const proxyUrl of proxyUrls) {
-                    try {
-                        console.log(`Пробуем прокси: ${proxyUrl}`);
-                        
-                        // Добавляем таймаут для каждого запроса
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 10000);
-                        
-                        const response = await fetch(proxyUrl, {
-                            headers: {
-                                'Accept': 'application/json'
-                            },
-                            signal: controller.signal
-                        });
-                        
-                        clearTimeout(timeoutId);
-                        
-                        if (!response.ok) {
-                            throw new Error(`Proxy error: ${response.status}`);
-                        }
-                        
-                        const data = await response.json();
-                        
-                        // Обработка разных форматов ответов от прокси
-                        let releases;
-                        if (proxyUrl.includes('corsproxy.io') || proxyUrl.includes('allorigins.win')) {
-                            // corsproxy.io и allorigins.win возвращают данные напрямую
-                            releases = Array.isArray(data) ? data : null;
-                            if (!releases && data && data.contents) {
-                                releases = JSON.parse(data.contents);
-                            }
-                        } else if (proxyUrl.includes('bridged.cc') || proxyUrl.includes('thingproxy') || proxyUrl.includes('cors.sh')) {
-                            // Эти прокси возвращают данные напрямую
-                            releases = data;
-                        }
-                        
-                        if (!Array.isArray(releases)) {
-                            throw new Error('Некорректный формат данных от прокси');
-                        }
-                        
-                        console.log(`Успешно загружено ${releases.length} релизов через прокси: ${proxyUrl}`);
-                        allReleases = releases;
-                        
-                        // Обрабатываем данные
-                        processReleases();
-                        saveDataToCache();
-                        
-                        // Обновляем интерфейс
-                        initMessage.style.display = 'none';
-                        dataSections.style.display = 'block';
-                        document.getElementById('footer-content').style.display = 'block';
-                        
-                        updateUI();
-                        lastUpdate.textContent = new Date().toLocaleString('ru-RU');
-                        showInfo(`Данные загружены через прокси-сервер`);
-                        
-                        return; // Успешно загрузили, выходим из функции
-                        
-                    } catch (proxyError) {
-                        console.log(`Прокси не сработал (${proxyUrl}):`, proxyError.message);
-                        lastError = proxyError;
-                        continue; // Пробуем следующий прокси
-                    }
+                if (!releases || releases.length === 0) {
+                    throw new Error('Не получено данных с GitHub');
                 }
                 
-                // Если ни один прокси не сработал
-                throw new Error(`Все прокси-серверы не сработали. Последняя ошибка: ${lastError?.message}`);
+                console.log(`Получено ${releases.length} релизов с GitHub`);
+                allReleases = releases;
+                
+                // Обрабатываем данные
+                processReleases();
+                
+                // Сохраняем в кэш
+                saveDataToCache();
+                
+                // Скрываем приветственное сообщение, показываем данные
+                initMessage.style.display = 'none';
+                dataSections.style.display = 'block';
+                document.getElementById('footer-content').style.display = 'block';
+                
+                updateUI();
+                lastUpdate.textContent = new Date().toLocaleString('ru-RU');
+                showInfo(`Данные успешно загружены (${releases.length} релизов)`);
                 
             } catch (error) {
-                console.error('Все способы загрузки через прокси не сработали:', error);
+                console.error('Ошибка загрузки:', error);
                 
-                // Проверяем, есть ли кэшированные данные
-                const hasCache = checkForCachedData();
+                // Проверяем, есть ли кэш
+                const cacheInfo = await checkCacheStatus();
                 
-                if (hasCache) {
-                    // Есть кэш - показываем его
-                    showInfo('Используем кэшированные данные. Обновить не удалось.');
-                    showCachedData();
+                if (cacheInfo.hasCache) {
+                    showError(`Не удалось загрузить новые данные: ${error.message}. Загружаем из кэша...`);
+                    
+                    // Загружаем из кэша
+                    setTimeout(() => {
+                        loadFromCache();
+                    }, 1500);
+                    
                 } else {
-                    // Нет кэша - показываем ошибку
-                    showError(`Не удалось загрузить данные: ${error.message}. 
-                    
-                    Возможные причины:
-                    1. Проблемы с интернет-соединением
-                    2. Все прокси-серверы недоступны
-                    3. GitHub API временно недоступен
-                    
-                    Попробуйте:
-                    1. Проверить интернет-соединение
-                    2. Нажать "Повторить попытку"
-                    3. Попробовать позже`);
+                    showError(`Не удалось загрузить данные: ${error.message}`);
                     
                     // Возвращаем кнопку загрузки
                     initMessage.innerHTML = `
                         <h3>Ошибка загрузки</h3>
                         <p>Не удалось загрузить данные с GitHub.</p>
-                        <p>Проверьте интернет-соединение и попробуйте еще раз.</p>
+                        <p>${error.message}</p>
                         <button id="retry-btn" class="init-btn">🔄 Повторить попытку</button>
                     `;
                     
@@ -864,28 +852,88 @@
             }
         }
         
+        // Функция загрузки с GitHub (с прокси)
+        async function fetchFromGitHub() {
+            // Список прокси-серверов для обхода CORS
+            const proxyUrls = [
+                `https://api.allorigins.win/get?url=${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`,
+                `https://corsproxy.io/?${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`,
+                `https://cors.bridged.cc/https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`,
+                `https://thingproxy.freeboard.io/fetch/https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`
+            ];
+            
+            let lastError = null;
+            
+            // Пробуем каждый прокси по очереди
+            for (const proxyUrl of proxyUrls) {
+                try {
+                    console.log(`Пробуем прокси: ${proxyUrl}`);
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000);
+                    
+                    const response = await fetch(proxyUrl, {
+                        headers: {
+                            'Accept': 'application/json'
+                        },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) {
+                        throw new Error(`Proxy error: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Обработка разных форматов ответов от прокси
+                    let releases;
+                    if (proxyUrl.includes('allorigins.win')) {
+                        if (data.contents) {
+                            releases = JSON.parse(data.contents);
+                        } else {
+                            releases = data;
+                        }
+                    } else if (proxyUrl.includes('corsproxy.io')) {
+                        releases = Array.isArray(data) ? data : null;
+                        if (!releases && data && data.contents) {
+                            releases = JSON.parse(data.contents);
+                        }
+                    } else {
+                        releases = data;
+                    }
+                    
+                    if (!Array.isArray(releases)) {
+                        throw new Error('Некорректный формат данных');
+                    }
+                    
+                    console.log(`Успешно загружено через: ${proxyUrl}`);
+                    return releases;
+                    
+                } catch (proxyError) {
+                    console.log(`Прокси не сработал:`, proxyError.message);
+                    lastError = proxyError;
+                    continue;
+                }
+            }
+            
+            throw new Error(`Все прокси не сработали: ${lastError?.message}`);
+        }
+        
         // Сохранение данных в кэш
         function saveDataToCache() {
             try {
-                // Убедимся что данные есть
                 if (!allReleases || !Array.isArray(allReleases)) {
                     console.error('Нет данных для сохранения в кэш');
                     return;
                 }
                 
-                // Дополнительная проверка: если массивы toolchainReleases и firmwareReleases пустые,
-                // но есть allReleases, обрабатываем данные заново
+                // Обрабатываем данные если нужно
                 if (allReleases.length > 0 && 
                     (toolchainReleases.length === 0 || firmwareReleases.length === 0)) {
-                    console.log('Обнаружены необработанные данные, запускаем processReleases...');
                     processReleases();
                 }
-                
-                console.log('Сохранение в кэш:', {
-                    releases: allReleases.length,
-                    toolchain: toolchainReleases.length,
-                    firmware: firmwareReleases.length
-                });
                 
                 const dataToCache = {
                     allReleases: allReleases,
@@ -895,33 +943,21 @@
                     timestamp: Date.now()
                 };
                 
-                // Сохраняем
                 localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(dataToCache));
-                
-                // Проверяем что сохранилось
-                const saved = localStorage.getItem(DATA_STORAGE_KEY);
-                console.log('Проверка сохранения:', saved ? 'Успешно' : 'Не удалось');
+                console.log('Данные сохранены в кэш:', {
+                    releases: allReleases.length,
+                    toolchain: toolchainReleases.length,
+                    firmware: firmwareReleases.length
+                });
                 
             } catch (error) {
                 console.error('Ошибка сохранения в кэш:', error);
-                
-                // Пробуем сохранить хотя бы основные данные
-                try {
-                    const minimalData = {
-                        allReleases: allReleases,
-                        timestamp: Date.now()
-                    };
-                    localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(minimalData));
-                    console.log('Сохранены минимальные данные');
-                } catch (e) {
-                    console.error('Даже минимальное сохранение не удалось:', e);
-                }
             }
         }
         
         // Обработка релизов
         function processReleases() {
-            console.log('Начало обработки релизов...');
+            console.log('Обработка релизов...');
             toolchainReleases = [];
             firmwareReleases = [];
             routerModels.clear();
@@ -1078,7 +1114,6 @@
                     if (line.includes('Source commit:')) {
                         const match = line.match(/Source commit:\s*([a-f0-9]+)/);
                         if (match && match[1]) {
-                            // Берем первые 8 символов хэша
                             commitHash = match[1].substring(0, 8);
                         }
                     } else if (line.includes('Last commit message:')) {
@@ -1227,6 +1262,8 @@
         function showInfo(message) {
             infoMessage.textContent = message;
             infoMessage.classList.add('show');
+            // Автоматически скрываем через 5 секунд
+            setTimeout(hideInfo, 5000);
         }
         
         // Скрыть информационное сообщение
@@ -1247,13 +1284,25 @@
             // Кнопка начальной загрузки
             initBtn.addEventListener('click', loadDataFromGitHub);
             
+            // Кнопка загрузки из кэша
+            loadCacheBtn.addEventListener('click', loadFromCache);
+            
+            // Кнопка очистки кэша
+            clearCacheBtn.addEventListener('click', () => {
+                if (confirm('Очистить кэш? Все сохраненные данные будут удалены.')) {
+                    localStorage.removeItem(DATA_STORAGE_KEY);
+                    showInfo('Кэш очищен');
+                    showInitMessage(false);
+                }
+            });
+            
             // Кнопка обновления данных
             refreshBtn.addEventListener('click', async () => {
                 showInfo('Обновление данных...');
                 await loadDataFromGitHub();
             });
             
-            // Кнопка очистки кэша
+            // Кнопка очистки кэша и загрузки заново
             forceRefreshBtn.addEventListener('click', () => {
                 if (confirm('Очистить кэш и загрузить данные заново?')) {
                     localStorage.removeItem(DATA_STORAGE_KEY);
@@ -1262,8 +1311,7 @@
                     firmwareReleases = [];
                     routerModels.clear();
                     
-                    // Показываем приветственное сообщение
-                    showInitMessage();
+                    showInitMessage(false);
                     showInfo('Кэш очищен. Нажмите "Загрузить данные с GitHub"');
                 }
             });
