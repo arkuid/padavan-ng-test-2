@@ -33,7 +33,7 @@
         footer { text-align: center; padding: 2rem 0; color: #666; font-size: 0.9rem; border-top: 1px solid var(--border); margin-top: 2rem; }
         .stats { display: flex; justify-content: center; gap: 2rem; margin: 1rem 0; font-size: 0.9rem; }
         .stat { font-weight: 600; color: var(--primary); }
-        .error { color: #cf222e; background: #ffebe9; border: 1px solid #ff8182; padding: 1rem; border-radius: 6px; margin: 1rem 0; }
+        .error { color: #cf222e; background: #ffebe9; border: 1px solid #ff8182; padding: 1rem; border-radius: 6px; margin: 1rem 0; display: none; }
         @media (max-width: 768px) { .card-grid { grid-template-columns: 1fr; } .filters { flex-direction: column; } input, select { min-width: auto; } }
     </style>
 </head>
@@ -44,7 +44,7 @@
     </header>
 
     <main>
-        <div id="error-message" style="display:none" class="error"></div>
+        <div id="error-message" class="error"></div>
         
         <div class="filters">
             <input type="text" id="search" placeholder="Поиск по названию или модели...">
@@ -80,198 +80,204 @@
             <div>Модели: <span id="count-models" class="stat">0</span></div>
         </div>
         <p>Обновлено: <span id="updated">-</span></p>
+        <p><button id="refresh-btn" style="padding: 0.5rem 1rem; margin-top: 1rem; cursor: pointer;">Обновить вручную</button></p>
     </footer>
 
     <script>
         const REPO = 'arkuid/padavan-ng-test-2';
-        const API = `https://api.github.com/repos/${REPO}/releases`;
-        const GITHUB_TOKEN = ''; // Оставьте пустым для публичного доступа
+        const API_URL = `https://api.github.com/repos/${REPO}/releases`;
+        
+        let allData = { toolchain: [], firmware: [], models: new Set() };
+        let isLoading = false;
 
-        let data = { toolchain: [], firmware: [], models: new Set() };
-
-        async function load() {
+        async function loadData() {
+            if (isLoading) return;
+            
+            isLoading = true;
+            showLoading(true);
+            hideError();
+            
             try {
-                const headers = {};
-                if (GITHUB_TOKEN) {
-                    headers['Authorization'] = `token ${GITHUB_TOKEN}`;
+                const response = await fetch(API_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка GitHub API: ${response.status}`);
                 }
                 
-                const res = await fetch(API, { headers });
-                
-                if (!res.ok) {
-                    if (res.status === 403) {
-                        // Пробуем альтернативный метод через GitHub Pages
-                        await loadViaProxy();
-                        return;
-                    }
-                    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-                }
-                
-                const releases = await res.json();
-                processData(releases);
+                const releases = await response.json();
+                processReleases(releases);
                 updateUI();
+                
                 document.getElementById('updated').textContent = new Date().toLocaleString('ru');
-            } catch (e) {
-                console.error('Ошибка загрузки:', e);
-                showError(`Не удалось загрузить данные. Попробуйте обновить страницу через несколько минут.`);
+                showLoading(false);
+                
+            } catch (error) {
+                console.error('Ошибка загрузки:', error);
+                showError('Не удалось загрузить данные. Проверьте подключение к интернету.');
+                showLoading(false);
+            } finally {
+                isLoading = false;
             }
         }
 
-        // Альтернативный метод через CORS proxy
-        async function loadViaProxy() {
-            try {
-                // Используем CORS proxy для обхода ограничений
-                const proxyUrl = 'https://corsproxy.io/?';
-                const res = await fetch(proxyUrl + encodeURIComponent(API));
-                
-                if (!res.ok) throw new Error(`Proxy error: ${res.status}`);
-                
-                const releases = await res.json();
-                processData(releases);
-                updateUI();
-                document.getElementById('updated').textContent = new Date().toLocaleString('ru');
-                
-                // Показываем предупреждение
-                showError('Данные загружены через прокси. Для стабильной работы добавьте GitHub Token.');
-            } catch (e) {
-                console.error('Proxy error:', e);
-                showError('Не удалось загрузить данные. Проблема с CORS или GitHub API лимитом.');
-            }
-        }
-
-        function processData(releases) {
-            data = { toolchain: [], firmware: [], models: new Set() };
-
-            if (!releases || !Array.isArray(releases)) {
-                console.error('Некорректный ответ от API:', releases);
-                return;
-            }
-
+        function processReleases(releases) {
+            allData = { toolchain: [], firmware: [], models: new Set() };
+            
+            if (!Array.isArray(releases)) return;
+            
             releases.forEach(release => {
+                const isToolchain = release.tag_name === 'latest' || 
+                                   (release.name && release.name.includes('Toolchain'));
+                
                 if (!release.assets || !Array.isArray(release.assets)) return;
                 
-                const isToolchain = release.tag_name === 'latest' || 
-                                  (release.name && release.name.includes('Toolchain'));
-
                 release.assets.forEach(asset => {
                     const item = {
-                        id: release.id + asset.id,
-                        name: release.name || asset.name,
+                        id: `${release.id}-${asset.id}`,
+                        name: release.name || 'Без названия',
                         file: asset.name,
                         url: asset.browser_download_url,
                         size: formatSize(asset.size),
-                        date: new Date(asset.created_at || release.created_at || Date.now()),
+                        date: new Date(asset.created_at || release.created_at),
                         desc: release.body || '',
                         type: isToolchain ? 'toolchain' : 'firmware'
                     };
-
+                    
                     if (isToolchain) {
-                        data.toolchain.push(item);
+                        allData.toolchain.push(item);
                     } else {
                         const model = extractModel(release.name, release.body);
                         if (model) {
                             item.model = model;
-                            data.models.add(model);
+                            allData.models.add(model);
                         }
-                        data.firmware.push(item);
+                        allData.firmware.push(item);
                     }
                 });
             });
-
-            data.firmware.sort((a, b) => b.date - a.date);
+            
+            allData.firmware.sort((a, b) => b.date - a.date);
         }
 
         function extractModel(name, desc) {
             if (!name) return null;
             
             const nameMatch = name.match(/Build \d+ \(\w+\) - (.+)$/);
-            if (nameMatch && nameMatch[1]) return nameMatch[1];
+            if (nameMatch) return nameMatch[1];
             
             if (desc) {
                 const descMatch = desc.match(/Router model:\s*(.+)/);
-                return descMatch ? descMatch[1].trim() : null;
+                if (descMatch) return descMatch[1].trim();
             }
             
-            return null;
+            return 'Неизвестная модель';
         }
 
         function updateUI() {
-            updateSection('toolchain', data.toolchain);
-            updateSection('firmware', data.firmware);
+            updateSection('toolchain', allData.toolchain);
+            updateSection('firmware', allData.firmware);
             updateFilters();
-            updateCounts();
-            
-            // Скрываем сообщение об ошибке если данные загрузились
-            hideError();
+            updateStats();
+            applyFilters();
         }
 
         function updateSection(type, items) {
             const container = document.getElementById(`${type}-container`);
             const loading = document.getElementById(`${type}-loading`);
             const empty = document.getElementById(`${type}-empty`);
-
+            
             if (loading) loading.style.display = 'none';
-
+            
             if (!items || items.length === 0) {
                 if (empty) empty.style.display = 'block';
                 if (container) container.innerHTML = '';
                 return;
             }
-
+            
             if (empty) empty.style.display = 'none';
-            if (container) container.innerHTML = items.map(item => createCard(item)).join('');
+            
+            const cardsHTML = items.map(item => createCard(item)).join('');
+            if (container) container.innerHTML = cardsHTML;
         }
 
         function createCard(item) {
             const isToolchain = item.type === 'toolchain';
             const dateStr = item.date.toLocaleDateString('ru');
             const model = item.model || '';
-
+            
             return `
                 <div class="card" data-type="${item.type}" data-model="${model}">
                     <div class="card-header">
-                        <span class="card-type ${isToolchain ? '' : 'firmware'}">${isToolchain ? 'TOOLCHAIN' : 'ПРОШИВКА'}</span>
+                        <span class="card-type ${isToolchain ? '' : 'firmware'}">
+                            ${isToolchain ? 'TOOLCHAIN' : 'ПРОШИВКА'}
+                        </span>
                         <span class="card-date">${dateStr}</span>
                     </div>
-                    <div class="card-title">${item.name}</div>
-                    ${model ? `<div class="card-model">${model}</div>` : ''}
+                    <div class="card-title">${escapeHtml(item.name)}</div>
+                    ${model ? `<div class="card-model">${escapeHtml(model)}</div>` : ''}
                     <div class="card-details">
-                        <div class="card-detail"><span class="card-label">Файл:</span> ${item.file}</div>
-                        <div class="card-detail"><span class="card-label">Размер:</span> ${item.size}</div>
+                        <div class="card-detail">
+                            <span class="card-label">Файл:</span> ${escapeHtml(item.file)}
+                        </div>
+                        <div class="card-detail">
+                            <span class="card-label">Размер:</span> ${item.size}
+                        </div>
                     </div>
-                    <a href="${item.url}" class="download-btn" download>Скачать</a>
+                    <a href="${item.url}" class="download-btn" download>
+                        Скачать
+                    </a>
                 </div>
             `;
         }
 
-        function updateFilters() {
-            const select = document.getElementById('filter-model');
-            if (!select) return;
-            
-            select.innerHTML = '<option value="all">Все модели</option>';
-            if (data.models && data.models.size > 0) {
-                [...data.models].sort().forEach(model => {
-                    select.innerHTML += `<option value="${model}">${model}</option>`;
-                });
-            }
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
-        function updateCounts() {
-            const toolchainCount = document.getElementById('count-toolchain');
-            const firmwareCount = document.getElementById('count-firmware');
-            const modelsCount = document.getElementById('count-models');
+        function updateFilters() {
+            const modelFilter = document.getElementById('filter-model');
+            if (!modelFilter) return;
             
-            if (toolchainCount) toolchainCount.textContent = data.toolchain ? data.toolchain.length : 0;
-            if (firmwareCount) firmwareCount.textContent = data.firmware ? data.firmware.length : 0;
-            if (modelsCount) modelsCount.textContent = data.models ? data.models.size : 0;
+            modelFilter.innerHTML = '<option value="all">Все модели</option>';
+            
+            const sortedModels = Array.from(allData.models).sort();
+            sortedModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                modelFilter.appendChild(option);
+            });
+        }
+
+        function updateStats() {
+            document.getElementById('count-toolchain').textContent = allData.toolchain.length;
+            document.getElementById('count-firmware').textContent = allData.firmware.length;
+            document.getElementById('count-models').textContent = allData.models.size;
         }
 
         function formatSize(bytes) {
-            if (!bytes || bytes === 0) return '0 B';
+            if (bytes === 0) return '0 B';
             const k = 1024;
             const sizes = ['B', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function showLoading(show) {
+            const toolchainLoading = document.getElementById('toolchain-loading');
+            const firmwareLoading = document.getElementById('firmware-loading');
+            
+            if (show) {
+                if (toolchainLoading) toolchainLoading.style.display = 'block';
+                if (firmwareLoading) firmwareLoading.style.display = 'block';
+                
+                document.getElementById('toolchain-container').innerHTML = '';
+                document.getElementById('firmware-container').innerHTML = '';
+                document.getElementById('toolchain-empty').style.display = 'none';
+                document.getElementById('firmware-empty').style.display = 'none';
+            }
         }
 
         function showError(message) {
@@ -289,49 +295,54 @@
             }
         }
 
-        function setupFilters() {
-            const search = document.getElementById('search');
-            const typeFilter = document.getElementById('filter-type');
-            const modelFilter = document.getElementById('filter-model');
+        function applyFilters() {
+            const searchTerm = document.getElementById('search').value.toLowerCase();
+            const typeFilter = document.getElementById('filter-type').value;
+            const modelFilter = document.getElementById('filter-model').value;
+            
+            const toolchainCards = document.querySelectorAll('#toolchain-container .card');
+            const firmwareCards = document.querySelectorAll('#firmware-container .card');
+            
+            let visibleToolchain = 0;
+            let visibleFirmware = 0;
+            
+            toolchainCards.forEach(card => {
+                const matchesType = typeFilter === 'all' || typeFilter === 'toolchain';
+                const matchesSearch = card.textContent.toLowerCase().includes(searchTerm);
+                const isVisible = matchesType && matchesSearch;
+                
+                card.style.display = isVisible ? 'block' : 'none';
+                if (isVisible) visibleToolchain++;
+            });
+            
+            firmwareCards.forEach(card => {
+                const matchesType = typeFilter === 'all' || typeFilter === 'firmware';
+                const matchesModel = modelFilter === 'all' || card.dataset.model === modelFilter;
+                const matchesSearch = card.textContent.toLowerCase().includes(searchTerm);
+                const isVisible = matchesType && matchesModel && matchesSearch;
+                
+                card.style.display = isVisible ? 'block' : 'none';
+                if (isVisible) visibleFirmware++;
+            });
+            
+            document.getElementById('toolchain-empty').style.display = 
+                visibleToolchain === 0 && allData.toolchain.length > 0 ? 'block' : 'none';
+            
+            document.getElementById('firmware-empty').style.display = 
+                visibleFirmware === 0 && allData.firmware.length > 0 ? 'block' : 'none';
+        }
 
-            if (!search || !typeFilter || !modelFilter) return;
-
-            function applyFilters() {
-                const searchTerm = search.value.toLowerCase();
-                const type = typeFilter.value;
-                const model = modelFilter.value;
-
-                const filteredToolchain = (data.toolchain || []).filter(item =>
-                    item && (type === 'all' || type === 'toolchain') &&
-                    ((item.name && item.name.toLowerCase().includes(searchTerm)) || 
-                     (item.file && item.file.toLowerCase().includes(searchTerm)))
-                );
-
-                const filteredFirmware = (data.firmware || []).filter(item =>
-                    item && (type === 'all' || type === 'firmware') &&
-                    (model === 'all' || item.model === model) &&
-                    ((item.name && item.name.toLowerCase().includes(searchTerm)) || 
-                     (item.file && item.file.toLowerCase().includes(searchTerm)) || 
-                     (item.model && item.model.toLowerCase().includes(searchTerm)))
-                );
-
-                updateSection('toolchain', filteredToolchain);
-                updateSection('firmware', filteredFirmware);
-            }
-
-            search.addEventListener('input', applyFilters);
-            typeFilter.addEventListener('change', applyFilters);
-            modelFilter.addEventListener('change', applyFilters);
+        function setupEventListeners() {
+            document.getElementById('search').addEventListener('input', applyFilters);
+            document.getElementById('filter-type').addEventListener('change', applyFilters);
+            document.getElementById('filter-model').addEventListener('change', applyFilters);
+            
+            document.getElementById('refresh-btn').addEventListener('click', loadData);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            load();
-            setupFilters();
-            
-            // Автоматическое обновление каждые 5 минут
-            setInterval(() => {
-                load();
-            }, 300000);
+            setupEventListeners();
+            loadData();
         });
     </script>
 </body>
