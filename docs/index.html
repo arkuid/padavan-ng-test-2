@@ -545,7 +545,7 @@
         // Используем CORS proxy для обхода ограничений
         const API_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`;
         
-        const UPDATE_INTERVAL = 20 * 60 * 1000; // 20 минут в миллисекундах
+        const UPDATE_INTERVAL = 2 * 60 * 60 * 1000; // 2 часа в миллисекундах
         const STORAGE_KEY = 'padavan_ng_last_update';
         const DATA_STORAGE_KEY = 'padavan_ng_cached_data';
         
@@ -569,30 +569,16 @@
         
         // Инициализация
         document.addEventListener('DOMContentLoaded', () => {
+            // Сразу показываем кэшированные данные
+            showCachedDataInstantly();
+            
+            // Затем проверяем нужно ли обновление
             checkAndLoadReleases();
             setupEventListeners();
         });
         
-        // Проверка времени последнего обновления и загрузка данных
-        function checkAndLoadReleases() {
-            const lastUpdateTime = getLastUpdateTime();
-            const now = Date.now();
-            const timeSinceLastUpdate = now - lastUpdateTime;
-            
-            if (timeSinceLastUpdate > UPDATE_INTERVAL || lastUpdateTime === 0) {
-                // Прошло больше 20 минут или первый запуск
-                loadReleases(false);
-            } else {
-                // Еще не прошло 20 минут - загружаем кэшированные данные
-                loadCachedData();
-                const timeUntilNextUpdate = UPDATE_INTERVAL - timeSinceLastUpdate;
-                scheduleNextUpdate(timeUntilNextUpdate);
-                showInfo(`Следующее обновление через ${formatTime(timeUntilNextUpdate)}`);
-            }
-        }
-        
-        // Загрузка кэшированных данных
-        function loadCachedData() {
+        // Мгновенная загрузка кэшированных данных
+        function showCachedDataInstantly() {
             try {
                 const cachedData = localStorage.getItem(DATA_STORAGE_KEY);
                 if (cachedData) {
@@ -612,26 +598,43 @@
                         }
                         
                         showLoading(false);
-                        return;
+                        console.log('Кэшированные данные загружены мгновенно');
                     }
                 }
-                
-                // Если кэш пустой или некорректен, загружаем свежие данные
-                loadReleases(false);
             } catch (error) {
-                console.error('Ошибка загрузки кэша:', error);
-                loadReleases(false);
+                console.log('Нет кэшированных данных или ошибка:', error);
+            }
+        }
+        
+        // Проверка времени последнего обновления
+        function checkAndLoadReleases() {
+            const lastUpdateTime = getLastUpdateTime();
+            const now = Date.now();
+            const timeSinceLastUpdate = now - lastUpdateTime;
+            
+            if (timeSinceLastUpdate === 0 || timeSinceLastUpdate > UPDATE_INTERVAL) {
+                // Первый запуск или прошло больше 2 часов
+                loadReleasesFromGitHub(false);
+            } else {
+                // Еще не прошло 2 часа - планируем следующее обновление
+                const timeUntilNextUpdate = UPDATE_INTERVAL - timeSinceLastUpdate;
+                scheduleNextUpdate(timeUntilNextUpdate);
+                showInfo(`Следующее обновление через ${formatTime(timeUntilNextUpdate)}`);
             }
         }
         
         // Загрузка данных с GitHub через CORS proxy
-        async function loadReleases(force = false) {
-            showLoading(true);
+        async function loadReleasesFromGitHub(force = false) {
+            // Не показываем загрузку если уже есть данные
+            if (allReleases.length === 0) {
+                showLoading(true);
+            }
+            
             hideError();
             hideInfo();
             
             try {
-                console.log('Загрузка данных через CORS proxy...');
+                console.log('Фоновая загрузка данных с GitHub...');
                 const response = await fetch(API_URL, {
                     headers: {
                         'Accept': 'application/json'
@@ -639,22 +642,22 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`Proxy вернул ошибку: ${response.status}`);
+                    throw new Error(`Ошибка сети: ${response.status}`);
                 }
                 
                 const data = await response.json();
                 
                 if (!data || !data.contents) {
-                    throw new Error('Некорректный ответ от proxy');
+                    throw new Error('Некорректный ответ от сервера');
                 }
                 
                 const releases = JSON.parse(data.contents);
                 
                 if (!Array.isArray(releases)) {
-                    throw new Error('Некорректный формат данных от GitHub API');
+                    throw new Error('Некорректный формат данных');
                 }
                 
-                console.log(`Получено ${releases.length} релизов`);
+                console.log(`Получено ${releases.length} релизов с GitHub`);
                 allReleases = releases;
                 processReleases();
                 updateUI();
@@ -669,18 +672,20 @@
                 // Обновляем время последнего обновления
                 lastUpdate.textContent = new Date(updateTime).toLocaleString('ru-RU');
                 
-                // Планируем следующее обновление через 20 минут
+                // Планируем следующее обновление через 2 часа
                 scheduleNextUpdate(UPDATE_INTERVAL);
                 
-                showInfo(`Данные успешно обновлены. Следующее обновление через 20 минут.`);
+                showInfo(`Данные обновлены. Следующее обновление через 2 часа.`);
                 
             } catch (error) {
                 console.error('Ошибка загрузки:', error);
-                showError(`Не удалось загрузить данные. Попробуйте обновить страницу.`);
                 
-                // Пробуем загрузить кэшированные данные
-                if (!force) {
-                    loadCachedData();
+                // Только показываем ошибку если данных совсем нет
+                if (allReleases.length === 0) {
+                    showError(`Не удалось загрузить данные: ${error.message}`);
+                } else {
+                    // Есть кэшированные данные, просто не смогли обновить
+                    showInfo('Используются кэшированные данные. Обновление не удалось.');
                 }
             } finally {
                 showLoading(false);
@@ -698,6 +703,7 @@
                     timestamp: Date.now()
                 };
                 localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(dataToCache));
+                console.log('Данные сохранены в кэш');
             } catch (error) {
                 console.error('Ошибка сохранения в кэш:', error);
             }
@@ -848,8 +854,6 @@
             // Парсим дополнительные детали из описания
             let commitHash = '';
             let lastCommitMessage = '';
-            let buildDate = '';
-            let routerModel = '';
             
             if (item.description) {
                 const lines = item.description.split('\n');
@@ -857,6 +861,7 @@
                     if (line.includes('Source commit:')) {
                         const match = line.match(/Source commit:\s*([a-f0-9]+)/);
                         if (match && match[1]) {
+                            // Берем первые 8 символов хэша
                             commitHash = match[1].substring(0, 8);
                         }
                     } else if (line.includes('Last commit message:')) {
@@ -864,21 +869,11 @@
                         if (match && match[1]) {
                             lastCommitMessage = match[1].trim();
                         }
-                    } else if (line.includes('Build date:')) {
-                        const match = line.match(/Build date:\s*(.+)/);
-                        if (match && match[1]) {
-                            buildDate = match[1].trim();
-                        }
-                    } else if (line.includes('Router model:')) {
-                        const match = line.match(/Router model:\s*(.+)/);
-                        if (match && match[1]) {
-                            routerModel = match[1].trim();
-                        }
                     }
                 });
             }
             
-            // Формируем HTML для деталей
+            // Формируем HTML для деталей (без Build date)
             let detailsHtml = `
                 <div class="detail-row">
                     <span class="detail-label">Файл:</span>
@@ -908,24 +903,6 @@
                         <span class="detail-value commit-message" title="${escapeHtml(lastCommitMessage)}">
                             ${escapeHtml(lastCommitMessage.length > 60 ? lastCommitMessage.substring(0, 60) + '...' : lastCommitMessage)}
                         </span>
-                    </div>
-                `;
-            }
-            
-            if (buildDate && !isToolchain) {
-                detailsHtml += `
-                    <div class="detail-row">
-                        <span class="detail-label">Дата сборки:</span>
-                        <span class="detail-value">${escapeHtml(buildDate)}</span>
-                    </div>
-                `;
-            }
-            
-            if (routerModel && !item.model && !isToolchain) {
-                detailsHtml += `
-                    <div class="detail-row">
-                        <span class="detail-label">Модель:</span>
-                        <span class="detail-value">${escapeHtml(routerModel)}</span>
                     </div>
                 `;
             }
@@ -1071,7 +1048,7 @@
             }
             
             nextUpdateTimer = setTimeout(() => {
-                loadReleases(false);
+                loadReleasesFromGitHub(false);
             }, delay);
             
             const nextUpdateTime = new Date(Date.now() + delay);
@@ -1105,13 +1082,13 @@
             modelFilter.addEventListener('change', applyFilters);
             
             refreshBtn.addEventListener('click', () => {
-                loadReleases(true);
+                loadReleasesFromGitHub(true);
             });
             
             forceRefreshBtn.addEventListener('click', () => {
                 localStorage.removeItem(STORAGE_KEY);
                 localStorage.removeItem(DATA_STORAGE_KEY);
-                loadReleases(true);
+                loadReleasesFromGitHub(true);
             });
         }
     </script>
