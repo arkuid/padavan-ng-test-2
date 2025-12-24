@@ -1,43 +1,247 @@
-.category {
-    margin-bottom: 40px;
-    padding: 20px;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border-left: 5px solid #2ea44f;
-}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Padavan-ng Releases</title>
+    <style>
+        :root { --bg: #fff; --text: #1a1a1a; --border: #e1e4e8; --primary: #0969da; --card-bg: #f6f8fa; }
+        @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --text: #c9d1d9; --border: #30363d; --card-bg: #161b22; } }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; line-height: 1.6; color: var(--text); background: var(--bg); max-width: 1000px; margin: 0 auto; padding: 1rem; }
+        header { text-align: center; padding: 2rem 0; border-bottom: 1px solid var(--border); margin-bottom: 2rem; }
+        h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        .subtitle { color: #666; font-size: 1rem; }
+        .filters { display: flex; gap: 1rem; margin-bottom: 2rem; padding: 1rem; background: var(--card-bg); border-radius: 8px; flex-wrap: wrap; }
+        input, select { padding: 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); flex: 1; min-width: 200px; }
+        section { margin-bottom: 3rem; }
+        h2 { font-size: 1.4rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+        .card { border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; background: var(--card-bg); }
+        .card-header { display: flex; justify-content: space-between; margin-bottom: 0.8rem; }
+        .card-type { font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 12px; background: #6f42c1; color: white; }
+        .card-type.firmware { background: #28a745; }
+        .card-date { font-size: 0.85rem; color: #666; }
+        .card-title { font-weight: 600; margin-bottom: 0.5rem; word-break: break-word; }
+        .card-model { display: inline-block; font-size: 0.85rem; color: var(--primary); background: rgba(9, 105, 218, 0.1); padding: 0.2rem 0.6rem; border-radius: 6px; margin-bottom: 0.8rem; }
+        .card-details { font-size: 0.9rem; margin-bottom: 1rem; }
+        .card-detail { margin-bottom: 0.3rem; }
+        .card-label { color: #666; }
+        .download-btn { display: block; text-align: center; padding: 0.6rem; background: var(--primary); color: white; text-decoration: none; border-radius: 6px; font-weight: 500; margin-top: 0.5rem; }
+        .download-btn:hover { opacity: 0.9; }
+        .loading, .empty { text-align: center; padding: 2rem; color: #666; font-style: italic; }
+        footer { text-align: center; padding: 2rem 0; color: #666; font-size: 0.9rem; border-top: 1px solid var(--border); margin-top: 2rem; }
+        .stats { display: flex; justify-content: center; gap: 2rem; margin: 1rem 0; font-size: 0.9rem; }
+        .stat { font-weight: 600; color: var(--primary); }
+        @media (max-width: 768px) { .card-grid { grid-template-columns: 1fr; } .filters { flex-direction: column; } input, select { min-width: auto; } }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Padavan-ng Releases</h1>
+        <p class="subtitle">Прошивки и инструменты для роутеров</p>
+    </header>
 
-.category-description {
-    color: #586069;
-    font-style: italic;
-    margin-bottom: 15px;
-    padding-bottom: 10px;
-    border-bottom: 1px dashed #e1e4e8;
-}
+    <main>
+        <div class="filters">
+            <input type="text" id="search" placeholder="Поиск по названию или модели...">
+            <select id="filter-type">
+                <option value="all">Все типы</option>
+                <option value="toolchain">Только Toolchain</option>
+                <option value="firmware">Только прошивки</option>
+            </select>
+            <select id="filter-model">
+                <option value="all">Все модели</option>
+            </select>
+        </div>
 
-.release {
-    background: white;
-    border: 1px solid #e1e4e8;
-    border-radius: 6px;
-    padding: 20px;
-    margin: 15px 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    transition: box-shadow 0.2s;
-}
+        <section>
+            <h2>Toolchain</h2>
+            <div id="toolchain-loading" class="loading">Загрузка...</div>
+            <div id="toolchain-empty" class="empty" style="display:none">Нет toolchain</div>
+            <div class="card-grid" id="toolchain-container"></div>
+        </section>
 
-.release:hover {
-    box-shadow: 0 3px 12px rgba(0,0,0,0.08);
-}
+        <section>
+            <h2>Прошивки</h2>
+            <div id="firmware-loading" class="loading">Загрузка...</div>
+            <div id="firmware-empty" class="empty" style="display:none">Нет прошивок</div>
+            <div class="card-grid" id="firmware-container"></div>
+        </section>
+    </main>
 
-.tag {
-    display: inline-block;
-    background: #2ea44f;
-    color: white;
-    padding: 4px 12px;
-    border-radius: 16px;
-    font-size: 0.9em;
-    font-weight: bold;
-}
+    <footer>
+        <div class="stats">
+            <div>Toolchain: <span id="count-toolchain" class="stat">0</span></div>
+            <div>Прошивки: <span id="count-firmware" class="stat">0</span></div>
+            <div>Модели: <span id="count-models" class="stat">0</span></div>
+        </div>
+        <p>Обновлено: <span id="updated">-</span></p>
+    </footer>
 
-.file-list a:hover {
-    background: #f6f8fa;
-}
+    <script>
+        const REPO = 'arkuid/padavan-ng-test-2';
+        const API = `https://api.github.com/repos/${REPO}/releases`;
+
+        let data = { toolchain: [], firmware: [], models: new Set() };
+
+        async function load() {
+            try {
+                const res = await fetch(API);
+                const releases = await res.json();
+                processData(releases);
+                updateUI();
+                document.getElementById('updated').textContent = new Date().toLocaleString('ru');
+            } catch (e) {
+                console.error(e);
+                document.getElementById('toolchain-loading').textContent = 'Ошибка загрузки';
+                document.getElementById('firmware-loading').textContent = 'Ошибка загрузки';
+            }
+        }
+
+        function processData(releases) {
+            data = { toolchain: [], firmware: [], models: new Set() };
+
+            releases.forEach(release => {
+                const isToolchain = release.tag_name === 'latest' || release.name.includes('Toolchain');
+
+                release.assets.forEach(asset => {
+                    const item = {
+                        id: release.id + asset.id,
+                        name: release.name || asset.name,
+                        file: asset.name,
+                        url: asset.browser_download_url,
+                        size: formatSize(asset.size),
+                        date: new Date(asset.created_at || release.created_at),
+                        desc: release.body || '',
+                        type: isToolchain ? 'toolchain' : 'firmware'
+                    };
+
+                    if (isToolchain) {
+                        data.toolchain.push(item);
+                    } else {
+                        const model = extractModel(release.name, release.body);
+                        if (model) {
+                            item.model = model;
+                            data.models.add(model);
+                        }
+                        data.firmware.push(item);
+                    }
+                });
+            });
+
+            data.firmware.sort((a, b) => b.date - a.date);
+        }
+
+        function extractModel(name, desc) {
+            const nameMatch = name.match(/Build \d+ \(\w+\) - (.+)$/);
+            if (nameMatch) return nameMatch[1];
+            const descMatch = desc.match(/Router model:\s*(.+)/);
+            return descMatch ? descMatch[1].trim() : null;
+        }
+
+        function updateUI() {
+            updateSection('toolchain', data.toolchain);
+            updateSection('firmware', data.firmware);
+            updateFilters();
+            updateCounts();
+        }
+
+        function updateSection(type, items) {
+            const container = document.getElementById(`${type}-container`);
+            const loading = document.getElementById(`${type}-loading`);
+            const empty = document.getElementById(`${type}-empty`);
+
+            loading.style.display = 'none';
+
+            if (items.length === 0) {
+                empty.style.display = 'block';
+                container.innerHTML = '';
+                return;
+            }
+
+            empty.style.display = 'none';
+            container.innerHTML = items.map(item => createCard(item)).join('');
+        }
+
+        function createCard(item) {
+            const isToolchain = item.type === 'toolchain';
+            const dateStr = item.date.toLocaleDateString('ru');
+            const model = item.model || '';
+
+            return `
+                <div class="card" data-type="${item.type}" data-model="${model}">
+                    <div class="card-header">
+                        <span class="card-type ${isToolchain ? '' : 'firmware'}">${isToolchain ? 'TOOLCHAIN' : 'ПРОШИВКА'}</span>
+                        <span class="card-date">${dateStr}</span>
+                    </div>
+                    <div class="card-title">${item.name}</div>
+                    ${model ? `<div class="card-model">${model}</div>` : ''}
+                    <div class="card-details">
+                        <div class="card-detail"><span class="card-label">Файл:</span> ${item.file}</div>
+                        <div class="card-detail"><span class="card-label">Размер:</span> ${item.size}</div>
+                    </div>
+                    <a href="${item.url}" class="download-btn" download>Скачать</a>
+                </div>
+            `;
+        }
+
+        function updateFilters() {
+            const select = document.getElementById('filter-model');
+            select.innerHTML = '<option value="all">Все модели</option>';
+            [...data.models].sort().forEach(model => {
+                select.innerHTML += `<option value="${model}">${model}</option>`;
+            });
+        }
+
+        function updateCounts() {
+            document.getElementById('count-toolchain').textContent = data.toolchain.length;
+            document.getElementById('count-firmware').textContent = data.firmware.length;
+            document.getElementById('count-models').textContent = data.models.size;
+        }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function setupFilters() {
+            const search = document.getElementById('search');
+            const typeFilter = document.getElementById('filter-type');
+            const modelFilter = document.getElementById('filter-model');
+
+            function applyFilters() {
+                const searchTerm = search.value.toLowerCase();
+                const type = typeFilter.value;
+                const model = modelFilter.value;
+
+                const filteredToolchain = data.toolchain.filter(item =>
+                    (type === 'all' || type === 'toolchain') &&
+                    (item.name.toLowerCase().includes(searchTerm) || item.file.toLowerCase().includes(searchTerm))
+                );
+
+                const filteredFirmware = data.firmware.filter(item =>
+                    (type === 'all' || type === 'firmware') &&
+                    (model === 'all' || item.model === model) &&
+                    (item.name.toLowerCase().includes(searchTerm) || item.file.toLowerCase().includes(searchTerm) || (item.model && item.model.toLowerCase().includes(searchTerm)))
+                );
+
+                updateSection('toolchain', filteredToolchain);
+                updateSection('firmware', filteredFirmware);
+            }
+
+            search.addEventListener('input', applyFilters);
+            typeFilter.addEventListener('change', applyFilters);
+            modelFilter.addEventListener('change', applyFilters);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            load();
+            setupFilters();
+        });
+    </script>
+</body>
+</html>
