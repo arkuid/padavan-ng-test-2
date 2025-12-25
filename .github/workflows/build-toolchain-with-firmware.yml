@@ -62,9 +62,16 @@ jobs:
         ALREADY_BUILT=false
         for release in $(echo "$ALL_RELEASES" | jq -r '.[] | @base64'); do
           RELEASE_BODY=$(echo "$release" | base64 --decode | jq -r '.body')
-          # Look for the toolchain commit in release body
-          if echo "$RELEASE_BODY" | grep -q "Based on padavan-ng commit: $PADAVAN_COMMIT_SHA"; then
-            echo "Found existing toolchain release for commit $PADAVAN_COMMIT_SHA"
+          # Ищем полный коммит в описании релиза
+          if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA"; then
+            echo "Found existing release for commit $PADAVAN_COMMIT_SHA"
+            ALREADY_BUILT=true
+            break
+          fi
+          # Также проверяем по короткому хешу (первые 8 символов)
+          SHORT_SHA="${PADAVAN_COMMIT_SHA:0:8}"
+          if echo "$RELEASE_BODY" | grep -q "$SHORT_SHA"; then
+            echo "Found existing release for short commit $SHORT_SHA"
             ALREADY_BUILT=true
             break
           fi
@@ -95,20 +102,29 @@ jobs:
         
     - name: Install dependencies
       run: |
-        apt-get update
-        apt-get install -y \
-            build-essential \
+        sudo apt update
+        sudo apt install --no-install-recommends -y \
+            autoconf \
+            automake \
+            bison \
             bzip2 \
-            file \
+            ca-certificates \
+            flex \
+            g++ \
             gawk \
-            gettext \
+            gcc \
             git \
+            gperf \
+            help2man \
             libncurses5-dev \
-            libssl-dev \
+            libstdc++6 \
+            libtool \
+            libtool-bin \
+            make \
             patch \
-            python3 \
-            rsync \
-            subversion \
+                     
+                   
+                        
             texinfo \
             unzip \
             wget \
@@ -171,7 +187,7 @@ jobs:
         {
           "tag_name": "latest",
           "name": "Latest Padavan Toolchain",
-          "body": "Latest automatically built toolchain from nilabsent/padavan-ng\n\n**Source:** ${{ env.PADAVAN_REPO }}\n**Build Date:** ${{ steps.date.outputs.current-date }}\n**Based on padavan-ng commit:** ${{ needs.check-toolchain-changes.outputs.toolchain-commit-sha }}\n**Commit Date:** ${{ needs.check-toolchain-changes.outputs.toolchain-commit-date }}\n\nUse this URL to always get the newest toolchain:\n\`https://github.com/${{ github.repository }}/releases/latest/download/${{ env.TOOLCHAIN_FILE }}\`",
+          "body": "Latest automatically built toolchain from nilabsent/padavan-ng\n\n**Source:** ${{ env.PADAVAN_REPO }}\n**Build Date:** ${{ steps.date.outputs.current-date }}\n**Based on padavan-ng commit:** ${{ needs.check-changes.outputs.commit-sha }}\n**Commit Date:** ${{ needs.check-changes.outputs.commit-date }}\n\nUse this URL to always get the newest toolchain:\n\`https://github.com/${{ github.repository }}/releases/latest/download/${{ env.TOOLCHAIN_FILE }}\`",
           "draft": false,
           "prerelease": false
         }
