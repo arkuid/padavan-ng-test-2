@@ -1,4 +1,4 @@
-name: Check and Build
+name: Check and Build old
 
 on:
   workflow_dispatch:
