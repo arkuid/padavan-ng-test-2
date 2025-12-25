@@ -393,14 +393,9 @@ jobs:
         git config --global --add safe.directory '*'
         git clone --depth 1 "https://github.com/nilabsent/padavan-ng.git"
         
-        # Скачиваем toolchain из созданного релиза
+        # Скачиваем toolchain
         cd padavan-ng
-        # Всегда используем latest релиз toolchain
-        TOOLCHAIN_URL="https://github.com/${{ github.repository }}/releases/latest/download/toolchain.tzst"
-        
-        echo "Downloading toolchain from: $TOOLCHAIN_URL"
-        wget -q "$TOOLCHAIN_URL"
-        
+        wget -q "https://github.com/arkuid/padavan-ng-test-2/releases/download/latest/toolchain.tzst"
         tar --zstd -xf toolchain.tzst
         rm toolchain.tzst
         
