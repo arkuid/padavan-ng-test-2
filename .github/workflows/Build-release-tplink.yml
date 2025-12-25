@@ -8,8 +8,8 @@ on:
         type: string
         required: true
         default: "tplink-c5-v4-16M"
-  schedule:
-    - cron: '0 21,9 * * *'
+#  schedule:
+#    - cron: '0 21,9 * * *'
 
 permissions:
   contents: write
