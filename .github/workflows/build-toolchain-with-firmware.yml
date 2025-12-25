@@ -349,7 +349,6 @@ jobs:
     container: ghcr.io/arkuid/padavan-ng-test-2:latest
     needs: 
       - check-toolchain-changes
-      - build-toolchain
       - check-changes
     if: needs.check-changes.outputs.should-build == 'true'
     defaults:
@@ -396,12 +395,8 @@ jobs:
         
         # Скачиваем toolchain из созданного релиза
         cd padavan-ng
-        # Используем URL из build-toolchain job, если он существует, иначе используем latest
-        if [ -n "${{ needs.build-toolchain.outputs.toolchain-url }}" ]; then
-          TOOLCHAIN_URL="${{ needs.build-toolchain.outputs.toolchain-url }}"
-        else
-          TOOLCHAIN_URL="https://github.com/${{ github.repository }}/releases/latest/download/toolchain.tzst"
-        fi
+        # Всегда используем latest релиз toolchain
+        TOOLCHAIN_URL="https://github.com/${{ github.repository }}/releases/latest/download/toolchain.tzst"
         
         echo "Downloading toolchain from: $TOOLCHAIN_URL"
         wget -q "$TOOLCHAIN_URL"
