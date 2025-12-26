@@ -1,15 +1,13 @@
-name: Update Releases Data
+name: Update Releases Data (Alternative)
 
 on:
   schedule:
-    # Запускать каждый день в полночь UTC
     - cron: '0 0 * * *'
   workflow_dispatch:
-    # Позволяет запускать вручную
   push:
-    branches: [ main, master ]
+    branches: [ main ]
     paths:
-      - '.github/workflows/update-releases.yml'
+      - '.github/workflows/update-releases-alt.yml'
 
 permissions:
   contents: write
@@ -21,70 +19,59 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Fetch releases using GitHub Script
+      uses: actions/github-script@v7
+      id: fetch-releases
       with:
-        token: ${{ secrets.REPO_TOKEN }}
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-
-    - name: Fetch releases from GitHub API
-      run: |
-        mkdir -p docs
-        
-        # Используем GitHub API токен для увеличения лимита
-        curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-             -H "Accept: application/vnd.github.v3+json" \
-             "https://api.github.com/repos/${{ github.repository }}/releases" \
-             > docs/releases.json
-        
-        # Если GITHUB_TOKEN не работает, пробуем без авторизации
-        if [ ! -s docs/releases.json ] || grep -q '"message"' docs/releases.json; then
-          echo "Trying without auth token..."
-          curl -s -H "Accept: application/vnd.github.v3+json" \
-               "https://api.github.com/repos/${{ github.repository }}/releases" \
-               > docs/releases.json
-        fi
-        
-        # Проверяем что файл создан и содержит данные
-        if [ ! -s docs/releases.json ]; then
-          echo "Error: releases.json is empty or not created"
-          exit 1
-        fi
-        
-        # Проверяем JSON формат
-        if ! jq empty docs/releases.json 2>/dev/null; then
-          echo "Error: releases.json is not valid JSON"
-          exit 1
-        fi
-        
-        echo "Releases data saved to docs/releases.json"
-        
-        # Создаем метаданные
-        cat > docs/releases_meta.json << EOF
-{
-  "last_updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "repository": "${{ github.repository }}",
-  "total_releases": $(jq length docs/releases.json)
-}
-EOF
-
-    - name: Configure Git
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
+        script: |
+          const { data: releases } = await github.rest.repos.listReleases({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            per_page: 100
+          });
+          
+          console.log(`Fetched ${releases.length} releases`);
+          
+          // Сохраняем в файл
+          const fs = require('fs');
+          const path = require('path');
+          
+          const docsDir = path.join(process.env.GITHUB_WORKSPACE, 'docs');
+          if (!fs.existsSync(docsDir)) {
+            fs.mkdirSync(docsDir, { recursive: true });
+          }
+          
+          const releasesFile = path.join(docsDir, 'releases.json');
+          const metaFile = path.join(docsDir, 'releases_meta.json');
+          
+          // Сохраняем релизы
+          fs.writeFileSync(releasesFile, JSON.stringify(releases, null, 2));
+          
+          // Сохраняем метаданные
+          const meta = {
+            last_updated: new Date().toISOString(),
+            repository: context.repo.repo,
+            owner: context.repo.owner,
+            total_releases: releases.length
+          };
+          
+          fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2));
+          
+          return releases.length;
 
     - name: Commit and push changes
       run: |
-        # Проверяем есть ли изменения
-        git status --porcelain
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
         
-        if git diff --quiet && git diff --staged --quiet; then
+        # Проверяем изменения
+        if [ -z "$(git status --porcelain docs/)" ]; then
           echo "No changes to commit"
-        else
-          git add docs/releases.json docs/releases_meta.json
-          git commit -m "📦 Auto-update releases data [skip ci]"
-          git push
-          echo "Changes committed and pushed"
+          exit 0
         fi
+        
+        git add docs/
+        git commit -m "📦 Auto-update releases data [skip ci]"
+        git push
+        echo "Changes committed and pushed"
