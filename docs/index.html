@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Padavan-ng Releases</title>
     <style>
-        /* Стили остаются без изменений */
+        /* Все стили остаются без изменений */
         :root {
             --bg-color: #ffffff;
             --text-color: #1a1a1a;
@@ -165,7 +165,7 @@
             display: block;
         }
 
-        .init-message {
+        .loading-container {
             text-align: center;
             padding: 40px 20px;
             background: var(--card-bg);
@@ -174,13 +174,13 @@
             border: 1px solid var(--border-color);
         }
 
-        .init-message h3 {
+        .loading-container h3 {
             font-size: 1.2rem;
             margin-bottom: 10px;
             color: var(--primary-color);
         }
 
-        .init-message p {
+        .loading-container p {
             color: #666;
             margin-bottom: 20px;
             line-height: 1.5;
@@ -465,6 +465,11 @@
             line-height: 1.4;
         }
 
+        .last-updated {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
         @media (max-width: 480px) {
             body {
                 padding: 12px;
@@ -525,30 +530,26 @@
     <div id="info-message" class="info-message"></div>
 
     <main id="main-content">
-        <!-- Изначально показываем приветственное сообщение -->
-        <div id="init-message" class="init-message">
-            <h3>Добро пожаловать!</h3>
-            <p>На этой странице отображаются прошивки и toolchain из GitHub Releases.</p>
-            <p id="cache-status">При первом посещении необходимо загрузить данные с GitHub.</p>
-            <button id="init-btn" class="init-btn">📥 Загрузить данные с GitHub</button>
-            <div id="cache-actions" style="margin-top: 15px; display: none;">
-                <button id="load-cache-btn" class="refresh-btn secondary" style="margin: 5px;">📂 Загрузить из кэша</button>
-                <button id="clear-cache-btn" class="refresh-btn secondary" style="margin: 5px; background: #dc3545; color: white;">🗑️ Очистить кэш</button>
+        <!-- Контейнер для загрузки -->
+        <div id="loading-container" class="loading-container">
+            <h3>Загрузка данных...</h3>
+            <p id="loading-text">Пожалуйста, подождите, данные загружаются.</p>
+            <div id="loading-progress" style="margin: 20px 0;">
+                <div id="progress-bar" style="width: 0%; height: 4px; background: var(--primary-color); border-radius: 2px; transition: width 0.3s;"></div>
             </div>
+            <button id="retry-btn" class="init-btn" style="display: none;">🔄 Повторить попытку</button>
         </div>
 
         <!-- Секции с данными изначально скрыты -->
         <div id="data-sections" style="display: none;">
             <section id="toolchain-section">
                 <h2>📦 Toolchain</h2>
-                <div id="toolchain-loading" class="loading">Загрузка toolchain...</div>
                 <div id="toolchain-empty" class="loading" style="display: none;">Нет доступных toolchain</div>
                 <div class="files-grid" id="toolchain-files"></div>
             </section>
 
             <section id="firmware-section">
                 <h2>🔄 Прошивки роутеров</h2>
-                <div id="firmware-loading" class="loading">Загрузка прошивок...</div>
                 <div id="firmware-empty" class="loading" style="display: none;">Нет доступных прошивок</div>
                 <div class="files-grid" id="firmware-files"></div>
             </section>
@@ -572,26 +573,32 @@
         </div>
         
         <div class="update-info">
-            <p>Последнее обновление: <span id="last-update">-</span></p>
-            <p>Данные загружены из GitHub Releases</p>
+            <p>Последнее обновление: <span id="last-update" class="last-updated">-</span></p>
+            <p>Обновляется автоматически через GitHub Actions</p>
+            <p id="next-update" style="font-size: 0.8rem; color: #666;"></p>
         </div>
         
         <button id="refresh-btn" class="refresh-btn">🔄 Обновить данные</button>
-        <button id="force-refresh-btn" class="refresh-btn secondary">🗘 Очистить кэш и загрузить заново</button>
+        <button id="clear-cache-btn" class="refresh-btn secondary">🗑️ Очистить кэш</button>
+        <a href="https://github.com/arkuid/padavan-ng-test-2/actions/workflows/update-releases-alt.yml" 
+           class="refresh-btn secondary" target="_blank">
+           🔧 Управление Actions
+        </a>
     </footer>
 
     <script>
         // Конфигурация
-        const REPO_OWNER = 'arkuid';
-        const REPO_NAME = 'padavan-ng-test-2';
-        const DATA_STORAGE_KEY = 'padavan_ng_cached_data';
-        const CACHE_MAX_AGE = 2 * 60 * 60 * 1000; // 2 часа в миллисекундах
+        const DATA_URL = 'docs/releases.json';
+        const META_URL = 'docs/releases_meta.json';
+        const CACHE_KEY = 'padavan_releases_cache_v2';
+        const CACHE_DURATION = 60 * 60 * 1000; // 1 час в миллисекундах
         
         // Переменные состояния
         let allReleases = [];
         let toolchainReleases = [];
         let firmwareReleases = [];
         let routerModels = new Set();
+        let lastUpdateTime = null;
         
         // DOM элементы
         const searchInput = document.getElementById('search-input');
@@ -599,391 +606,283 @@
         const modelFilter = document.getElementById('model-filter');
         const errorMessage = document.getElementById('error-message');
         const infoMessage = document.getElementById('info-message');
-        const initMessage = document.getElementById('init-message');
-        const cacheStatus = document.getElementById('cache-status');
-        const cacheActions = document.getElementById('cache-actions');
+        const loadingContainer = document.getElementById('loading-container');
+        const loadingText = document.getElementById('loading-text');
+        const progressBar = document.getElementById('progress-bar');
+        const retryBtn = document.getElementById('retry-btn');
         const dataSections = document.getElementById('data-sections');
-        const initBtn = document.getElementById('init-btn');
-        const loadCacheBtn = document.getElementById('load-cache-btn');
-        const clearCacheBtn = document.getElementById('clear-cache-btn');
         const refreshBtn = document.getElementById('refresh-btn');
-        const forceRefreshBtn = document.getElementById('force-refresh-btn');
+        const clearCacheBtn = document.getElementById('clear-cache-btn');
         const lastUpdate = document.getElementById('last-update');
+        const nextUpdate = document.getElementById('next-update');
         
         // Инициализация
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log('Инициализация приложения...');
+            console.log('🚀 Инициализация Padavan-ng Releases');
+            console.log('📁 Источник данных:', DATA_URL);
             
-            // Сначала настраиваем обработчики событий
             setupEventListeners();
-            
-            // Проверяем наличие кэша и его актуальность
-            const cacheInfo = await checkCacheStatus();
-            
-            if (cacheInfo.hasCache) {
-                console.log('Найден кэш:', cacheInfo);
-                
-                if (cacheInfo.isFresh) {
-                    // Кэш свежий - автоматически загружаем
-                    console.log('Кэш свежий, загружаем автоматически');
-                    showInfo('Загружаем кэшированные данные...');
-                    await loadFromCache();
-                } else {
-                    // Кэш устарел - предлагаем выбор
-                    console.log('Кэш устарел, предлагаем выбор');
-                    showCacheOptions(cacheInfo);
-                }
-            } else {
-                // Нет кэша - показываем приветственное сообщение
-                console.log('Кэш не найден');
-                showInitMessage(false);
-            }
+            await loadData();
         });
         
-        // Проверка статуса кэша
-        async function checkCacheStatus() {
+        // Основная функция загрузки данных
+        async function loadData() {
             try {
-                const cachedData = localStorage.getItem(DATA_STORAGE_KEY);
+                showLoading('Проверка кэша...');
+                updateProgress(10);
+                
+                // Проверяем кэш
+                const cache = checkCache();
+                if (cache && cache.isValid) {
+                    console.log('✅ Используем кэшированные данные');
+                    showInfo('Используем кэшированные данные');
+                    updateProgress(30);
+                    
+                    allReleases = cache.data.releases || [];
+                    lastUpdateTime = cache.data.meta?.last_updated || cache.timestamp;
+                    
+                    // Обрабатываем данные
+                    processReleases();
+                    updateProgress(70);
+                    
+                    // Показываем интерфейс
+                    showData();
+                    updateProgress(100);
+                    
+                    // Загружаем метаданные
+                    setTimeout(() => {
+                        loadMetadata();
+                    }, 100);
+                    
+                    // Пробуем обновить данные в фоне
+                    setTimeout(() => {
+                        fetchNewData(true); // silent = true
+                    }, 1500);
+                    
+                    return;
+                }
+                
+                // Если кэша нет или он устарел, загружаем новые данные
+                showLoading('Загрузка данных...');
+                updateProgress(20);
+                
+                await fetchNewData(false);
+                updateProgress(100);
+                
+            } catch (error) {
+                console.error('❌ Ошибка загрузки данных:', error);
+                showError(`Ошибка загрузки данных: ${error.message}`);
+                showRetryButton();
+            }
+        }
+        
+        // Проверка кэша
+        function checkCache() {
+            try {
+                const cachedData = localStorage.getItem(CACHE_KEY);
                 if (!cachedData) {
-                    return { hasCache: false };
+                    console.log('ℹ️ Кэш не найден');
+                    return null;
                 }
                 
-                const data = JSON.parse(cachedData);
+                const cache = JSON.parse(cachedData);
                 
-                if (!data || !data.timestamp || !Array.isArray(data.allReleases)) {
-                    console.log('Кэш поврежден');
-                    return { hasCache: false };
+                // Проверяем структуру
+                if (!cache || !cache.timestamp || !cache.data) {
+                    console.log('⚠️ Кэш поврежден');
+                    return null;
                 }
                 
-                const cacheAge = Date.now() - data.timestamp;
-                const isFresh = cacheAge < CACHE_MAX_AGE;
+                // Проверяем срок годности
+                const cacheAge = Date.now() - cache.timestamp;
+                const isValid = cacheAge < CACHE_DURATION;
+                
+                const ageMinutes = Math.round(cacheAge / 60000);
+                console.log(`📦 Кэш найден, возраст: ${ageMinutes} мин, действителен: ${isValid}`);
                 
                 return {
-                    hasCache: true,
-                    isFresh: isFresh,
-                    age: cacheAge,
-                    timestamp: data.timestamp,
-                    releaseCount: data.allReleases?.length || 0,
-                    ageHours: Math.round(cacheAge / (60 * 60 * 1000) * 10) / 10
+                    data: cache.data,
+                    timestamp: cache.timestamp,
+                    isValid: isValid,
+                    ageMinutes: ageMinutes
                 };
                 
             } catch (error) {
-                console.error('Ошибка проверки кэша:', error);
-                return { hasCache: false };
+                console.error('❌ Ошибка проверки кэша:', error);
+                return null;
             }
         }
         
-        // Показать приветственное сообщение
-        function showInitMessage(hasCache = false) {
-            initMessage.style.display = 'block';
-            dataSections.style.display = 'none';
-            document.getElementById('footer-content').style.display = 'none';
-            
-            if (hasCache) {
-                cacheActions.style.display = 'block';
-                initBtn.style.marginBottom = '10px';
-            } else {
-                cacheActions.style.display = 'none';
-                initBtn.style.marginBottom = '0';
-            }
-        }
-        
-        // Показать варианты при устаревшем кэше
-        function showCacheOptions(cacheInfo) {
-            initMessage.style.display = 'block';
-            dataSections.style.display = 'none';
-            document.getElementById('footer-content').style.display = 'none';
-            
-            const ageText = cacheInfo.ageHours >= 1 
-                ? `${cacheInfo.ageHours} часов назад` 
-                : `${Math.round(cacheInfo.ageHours * 60)} минут назад`;
-            
-            cacheStatus.innerHTML = `
-                Найден кэш (${cacheInfo.releaseCount} релизов, обновлен ${ageText}).
-                <br>Хотите загрузить из кэша или обновить данные?
-            `;
-            
-            cacheActions.style.display = 'block';
-            initBtn.textContent = '🔄 Обновить данные с GitHub';
-            initBtn.style.marginBottom = '10px';
-        }
-        
-        // Загрузка данных из кэша
-        async function loadFromCache() {
+        // Сохранение в кэш
+        function saveToCache(releases, meta = null) {
             try {
-                console.log('Загрузка данных из кэша...');
-                showInfo('Загрузка данных из кэша...');
+                const cacheData = {
+                    data: {
+                        releases: releases,
+                        meta: meta
+                    },
+                    timestamp: Date.now()
+                };
                 
-                const cachedData = localStorage.getItem(DATA_STORAGE_KEY);
-                if (!cachedData) {
-                    throw new Error('Кэш не найден');
-                }
-                
-                const data = JSON.parse(cachedData);
-                
-                if (!data || !Array.isArray(data.allReleases)) {
-                    throw new Error('Кэш поврежден');
-                }
-                
-                allReleases = data.allReleases || [];
-                toolchainReleases = data.toolchainReleases || [];
-                firmwareReleases = data.firmwareReleases || [];
-                routerModels = new Set(data.routerModels || []);
-                
-                console.log('Загружено из кэша:', {
-                    allReleases: allReleases.length,
-                    toolchainReleases: toolchainReleases.length,
-                    firmwareReleases: firmwareReleases.length,
-                    routerModels: routerModels.size
-                });
-                
-                // ВАЖНО: Преобразуем строковые даты в объекты Date при загрузке из кэша
-                if (toolchainReleases.length > 0 && !(toolchainReleases[0].date instanceof Date)) {
-                    console.log('Преобразуем даты в toolchainReleases...');
-                    toolchainReleases.forEach(item => {
-                        if (item.date && !(item.date instanceof Date)) {
-                            item.date = new Date(item.date);
-                        }
-                    });
-                }
-                
-                if (firmwareReleases.length > 0 && !(firmwareReleases[0].date instanceof Date)) {
-                    console.log('Преобразуем даты в firmwareReleases...');
-                    firmwareReleases.forEach(item => {
-                        if (item.date && !(item.date instanceof Date)) {
-                            item.date = new Date(item.date);
-                        }
-                    });
-                }
-                
-                // Если данные не обработаны, обрабатываем их
-                if (allReleases.length > 0 && 
-                    (toolchainReleases.length === 0 || firmwareReleases.length === 0)) {
-                    console.log('Обработка кэшированных данных...');
-                    processReleases();
-                }
-                
-                // Скрываем приветственное сообщение, показываем данные
-                initMessage.style.display = 'none';
-                dataSections.style.display = 'block';
-                document.getElementById('footer-content').style.display = 'block';
-                
-                updateUI();
-                
-                // Показываем время последнего обновления
-                if (data.timestamp) {
-                    lastUpdate.textContent = new Date(data.timestamp).toLocaleString('ru-RU');
-                }
-                
-                showInfo(`Загружены кэшированные данные (${allReleases.length} релизов)`);
-                
-                // Пытаемся обновить данные в фоне
-                setTimeout(() => {
-                    updateDataInBackground();
-                }, 2000);
+                localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+                console.log('💾 Данные сохранены в кэш');
                 
             } catch (error) {
-                console.error('Ошибка загрузки из кэша:', error);
-                showError(`Ошибка загрузки кэша: ${error.message}`);
-                showInitMessage(false);
+                console.error('❌ Ошибка сохранения в кэш:', error);
             }
         }
         
-        // Обновление данных в фоне
-        async function updateDataInBackground() {
+        // Загрузка метаданных
+        async function loadMetadata() {
             try {
-                console.log('Фоновое обновление данных...');
-                const releases = await fetchFromGitHub();
-                if (releases && releases.length > 0) {
-                    console.log(`Фоновое обновление: получено ${releases.length} релизов`);
+                const response = await fetch(META_URL + '?t=' + Date.now());
+                if (response.ok) {
+                    const meta = await response.json();
+                    lastUpdateTime = meta.last_updated;
                     
-                    allReleases = releases;
-                    processReleases();
-                    saveDataToCache();
+                    // Сохраняем метаданные в кэш
+                    const cache = checkCache();
+                    if (cache) {
+                        cache.data.meta = meta;
+                        localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+                    }
                     
-                    // Обновляем интерфейс
-                    updateUI();
-                    lastUpdate.textContent = new Date().toLocaleString('ru-RU');
+                    // Обновляем отображение
+                    updateLastUpdateDisplay();
                     
-                    showInfo('Данные обновлены в фоновом режиме');
+                    console.log('📊 Метаданные загружены:', meta);
                 }
             } catch (error) {
-                console.log('Фоновое обновление не удалось:', error.message);
-                // Не показываем ошибку пользователю, это фоновый процесс
+                console.log('⚠️ Не удалось загрузить метаданные:', error.message);
             }
         }
         
-        // Основная функция загрузки данных
-        async function loadDataFromGitHub() {
-            // Показываем индикатор загрузки
-            initMessage.innerHTML = '<div class="loading">Загрузка данных с GitHub...</div>';
-            hideError();
-            hideInfo();
-            
+        // Загрузка новых данных
+        async function fetchNewData(silent = false) {
             try {
-                console.log('Загрузка данных с GitHub...');
-                
-                const releases = await fetchFromGitHub();
-                
-                if (!releases || releases.length === 0) {
-                    throw new Error('Не получено данных с GitHub');
+                if (!silent) {
+                    showLoading('Загрузка данных с сервера...');
+                    updateProgress(30);
                 }
                 
-                console.log(`Получено ${releases.length} релизов с GitHub`);
+                console.log('⬇️ Загрузка данных с сервера...');
+                
+                // Загружаем релизы
+                const releasesResponse = await fetch(DATA_URL + '?t=' + Date.now());
+                if (!releasesResponse.ok) {
+                    throw new Error(`HTTP ${releasesResponse.status}: ${releasesResponse.statusText}`);
+                }
+                
+                const releases = await releasesResponse.json();
+                
+                if (!Array.isArray(releases)) {
+                    throw new Error('Некорректный формат данных релизов');
+                }
+                
+                if (!silent) {
+                    updateProgress(60);
+                    showLoading('Обработка данных...');
+                }
+                
                 allReleases = releases;
+                
+                // Загружаем метаданные
+                let meta = null;
+                try {
+                    const metaResponse = await fetch(META_URL + '?t=' + Date.now());
+                    if (metaResponse.ok) {
+                        meta = await metaResponse.json();
+                        lastUpdateTime = meta.last_updated;
+                    }
+                } catch (metaError) {
+                    console.log('⚠️ Не удалось загрузить метаданные:', metaError.message);
+                }
+                
+                // Сохраняем в кэш
+                saveToCache(releases, meta);
                 
                 // Обрабатываем данные
                 processReleases();
                 
-                // Сохраняем в кэш
-                saveDataToCache();
-                
-                // Скрываем приветственное сообщение, показываем данные
-                initMessage.style.display = 'none';
-                dataSections.style.display = 'block';
-                document.getElementById('footer-content').style.display = 'block';
-                
-                updateUI();
-                lastUpdate.textContent = new Date().toLocaleString('ru-RU');
-                showInfo(`Данные успешно загружены (${releases.length} релизов)`);
-                
-            } catch (error) {
-                console.error('Ошибка загрузки:', error);
-                
-                // Проверяем, есть ли кэш
-                const cacheInfo = await checkCacheStatus();
-                
-                if (cacheInfo.hasCache) {
-                    showError(`Не удалось загрузить новые данные: ${error.message}. Загружаем из кэша...`);
-                    
-                    // Загружаем из кэша
-                    setTimeout(() => {
-                        loadFromCache();
-                    }, 1500);
-                    
+                if (!silent) {
+                    updateProgress(90);
+                    showData();
+                    updateProgress(100);
+                    showInfo(`✅ Данные успешно загружены (${releases.length} релизов)`);
                 } else {
-                    showError(`Не удалось загрузить данные: ${error.message}`);
-                    
-                    // Возвращаем кнопку загрузки
-                    initMessage.innerHTML = `
-                        <h3>Ошибка загрузки</h3>
-                        <p>Не удалось загрузить данные с GitHub.</p>
-                        <p>${error.message}</p>
-                        <button id="retry-btn" class="init-btn">🔄 Повторить попытку</button>
-                    `;
-                    
-                    // Назначаем обработчик на кнопку повторной попытки
-                    document.getElementById('retry-btn').addEventListener('click', loadDataFromGitHub);
-                }
-            }
-        }
-        
-        // Функция загрузки с GitHub (с прокси)
-        async function fetchFromGitHub() {
-            // Список прокси-серверов для обхода CORS
-            const proxyUrls = [
-                `https://api.allorigins.win/get?url=${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`,
-                `https://corsproxy.io/?${encodeURIComponent(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`)}`,
-                `https://cors.bridged.cc/https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`,
-                `https://thingproxy.freeboard.io/fetch/https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases`
-            ];
-            
-            let lastError = null;
-            
-            // Пробуем каждый прокси по очереди
-            for (const proxyUrl of proxyUrls) {
-                try {
-                    console.log(`Пробуем прокси: ${proxyUrl}`);
-                    
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000);
-                    
-                    const response = await fetch(proxyUrl, {
-                        headers: {
-                            'Accept': 'application/json'
-                        },
-                        signal: controller.signal
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (!response.ok) {
-                        throw new Error(`Proxy error: ${response.status}`);
+                    console.log(`✅ Фоновая загрузка: получено ${releases.length} релизов`);
+                    // Обновляем интерфейс если он уже отображается
+                    if (dataSections.style.display !== 'none') {
+                        updateUI();
+                        updateLastUpdateDisplay();
+                        showInfo('✅ Данные обновлены', 3000);
                     }
-                    
-                    const data = await response.json();
-                    
-                    // Обработка разных форматов ответов от прокси
-                    let releases;
-                    if (proxyUrl.includes('allorigins.win')) {
-                        if (data.contents) {
-                            releases = JSON.parse(data.contents);
-                        } else {
-                            releases = data;
-                        }
-                    } else if (proxyUrl.includes('corsproxy.io')) {
-                        releases = Array.isArray(data) ? data : null;
-                        if (!releases && data && data.contents) {
-                            releases = JSON.parse(data.contents);
-                        }
-                    } else {
-                        releases = data;
-                    }
-                    
-                    if (!Array.isArray(releases)) {
-                        throw new Error('Некорректный формат данных');
-                    }
-                    
-                    console.log(`Успешно загружено через: ${proxyUrl}`);
-                    return releases;
-                    
-                } catch (proxyError) {
-                    console.log(`Прокси не сработал:`, proxyError.message);
-                    lastError = proxyError;
-                    continue;
-                }
-            }
-            
-            throw new Error(`Все прокси не сработали: ${lastError?.message}`);
-        }
-        
-        // Сохранение данных в кэш
-        function saveDataToCache() {
-            try {
-                if (!allReleases || !Array.isArray(allReleases)) {
-                    console.error('Нет данных для сохранения в кэш');
-                    return;
                 }
                 
-                // Обрабатываем данные если нужно
-                if (allReleases.length > 0 && 
-                    (toolchainReleases.length === 0 || firmwareReleases.length === 0)) {
-                    processReleases();
-                }
-                
-                const dataToCache = {
-                    allReleases: allReleases,
-                    toolchainReleases: toolchainReleases,
-                    firmwareReleases: firmwareReleases,
-                    routerModels: Array.from(routerModels),
-                    timestamp: Date.now()
-                };
-                
-                localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(dataToCache));
-                console.log('Данные сохранены в кэш:', {
-                    releases: allReleases.length,
-                    toolchain: toolchainReleases.length,
-                    firmware: firmwareReleases.length
-                });
+                console.log(`📊 Загружено ${releases.length} релизов`);
                 
             } catch (error) {
-                console.error('Ошибка сохранения в кэш:', error);
+                console.error('❌ Ошибка загрузки новых данных:', error);
+                
+                if (!silent) {
+                    showError(`Не удалось загрузить новые данные: ${error.message}`);
+                    showRetryButton();
+                }
+                
+                throw error;
+            }
+        }
+        
+        // Обновление отображения времени последнего обновления
+        function updateLastUpdateDisplay() {
+            if (lastUpdateTime) {
+                try {
+                    const date = new Date(lastUpdateTime);
+                    const now = new Date();
+                    const diffMs = now - date;
+                    const diffMins = Math.floor(diffMs / 60000);
+                    
+                    let timeText;
+                    if (diffMins < 1) {
+                        timeText = 'только что';
+                    } else if (diffMins < 60) {
+                        timeText = `${diffMins} мин назад`;
+                    } else if (diffMins < 1440) {
+                        const hours = Math.floor(diffMins / 60);
+                        timeText = `${hours} ч назад`;
+                    } else {
+                        const days = Math.floor(diffMins / 1440);
+                        timeText = `${days} дн назад`;
+                    }
+                    
+                    lastUpdate.textContent = timeText;
+                    lastUpdate.title = `Обновлено: ${date.toLocaleString('ru-RU')}`;
+                    
+                    // Рассчитываем следующее обновление
+                    const nextUpdateTime = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+                    const timeUntilUpdate = nextUpdateTime - now;
+                    
+                    if (timeUntilUpdate > 0) {
+                        const hoursUntil = Math.floor(timeUntilUpdate / (60 * 60 * 1000));
+                        const minsUntil = Math.floor((timeUntilUpdate % (60 * 60 * 1000)) / (60 * 1000));
+                        
+                        if (hoursUntil > 0) {
+                            nextUpdate.textContent = `Следующее обновление через ${hoursUntil} ч ${minsUntil} мин`;
+                        } else {
+                            nextUpdate.textContent = `Следующее обновление через ${minsUntil} мин`;
+                        }
+                    }
+                    
+                } catch (error) {
+                    console.log('⚠️ Ошибка форматирования даты:', error);
+                    lastUpdate.textContent = lastUpdateTime;
+                }
             }
         }
         
         // Обработка релизов
         function processReleases() {
-            console.log('Обработка релизов...');
+            console.log('🔧 Обработка релизов...');
             toolchainReleases = [];
             firmwareReleases = [];
             routerModels.clear();
@@ -997,14 +896,13 @@
                 }
                 
                 release.assets.forEach(asset => {
-                    // ВАЖНО: Создаем объект Date здесь
                     const fileItem = {
                         id: `${release.id}-${asset.id}`,
                         name: release.name || 'Без названия',
                         fileName: asset.name,
                         downloadUrl: asset.browser_download_url,
                         size: formatFileSize(asset.size),
-                        date: new Date(asset.created_at || release.created_at || Date.now()), // Создаем объект Date
+                        date: new Date(asset.created_at || release.created_at || Date.now()),
                         description: release.body || '',
                         type: isToolchain ? 'toolchain' : 'firmware'
                     };
@@ -1022,15 +920,11 @@
                 });
             });
             
-            // Сортируем по дате
-            firmwareReleases.sort((a, b) => {
-                // Убедимся что это объекты Date
-                const dateA = a.date instanceof Date ? a.date : new Date(a.date);
-                const dateB = b.date instanceof Date ? b.date : new Date(b.date);
-                return dateB - dateA;
-            });
+            // Сортируем по дате (новые сверху)
+            toolchainReleases.sort((a, b) => b.date - a.date);
+            firmwareReleases.sort((a, b) => b.date - a.date);
             
-            console.log('Обработка завершена:', {
+            console.log('✅ Обработка завершена:', {
                 toolchain: toolchainReleases.length,
                 firmware: firmwareReleases.length,
                 models: routerModels.size
@@ -1067,7 +961,42 @@
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             
             const formattedSize = parseFloat((bytes / Math.pow(k, i)).toFixed(i > 1 ? 2 : 0));
-            return `${formattedSize} ${sizes[i]}`;
+            return `${formformedSize} ${sizes[i]}`;
+        }
+        
+        // Показать данные
+        function showData() {
+            loadingContainer.style.display = 'none';
+            dataSections.style.display = 'block';
+            document.getElementById('footer-content').style.display = 'block';
+            
+            updateUI();
+            updateLastUpdateDisplay();
+        }
+        
+        // Показать загрузку
+        function showLoading(text) {
+            loadingContainer.style.display = 'block';
+            dataSections.style.display = 'none';
+            document.getElementById('footer-content').style.display = 'none';
+            
+            if (text) {
+                loadingText.textContent = text;
+            }
+            
+            retryBtn.style.display = 'none';
+        }
+        
+        // Показать кнопку повторной попытки
+        function showRetryButton() {
+            loadingText.textContent = 'Не удалось загрузить данные. Попробуйте еще раз.';
+            retryBtn.style.display = 'inline-block';
+            progressBar.style.width = '0%';
+        }
+        
+        // Обновить прогресс
+        function updateProgress(percent) {
+            progressBar.style.width = percent + '%';
         }
         
         // Обновление интерфейса
@@ -1082,10 +1011,7 @@
         // Обновление отображения toolchain
         function updateToolchainDisplay() {
             const container = document.getElementById('toolchain-files');
-            const loading = document.getElementById('toolchain-loading');
             const empty = document.getElementById('toolchain-empty');
-            
-            loading.style.display = 'none';
             
             if (toolchainReleases.length === 0) {
                 empty.style.display = 'block';
@@ -1105,10 +1031,7 @@
         // Обновление отображения прошивок
         function updateFirmwareDisplay() {
             const container = document.getElementById('firmware-files');
-            const loading = document.getElementById('firmware-loading');
             const empty = document.getElementById('firmware-empty');
-            
-            loading.style.display = 'none';
             
             if (firmwareReleases.length === 0) {
                 empty.style.display = 'block';
@@ -1135,18 +1058,7 @@
             card.dataset.name = item.name.toLowerCase();
             
             const isToolchain = item.type === 'toolchain';
-            
-            // ВАЖНО: Преобразуем date в объект Date если это необходимо
-            let dateObj;
-            if (item.date instanceof Date) {
-                dateObj = item.date;
-            } else if (typeof item.date === 'string') {
-                dateObj = new Date(item.date);
-            } else {
-                dateObj = new Date(); // fallback
-            }
-            
-            const dateStr = dateObj.toLocaleDateString('ru-RU');
+            const dateStr = item.date.toLocaleDateString('ru-RU');
             
             // Парсим дополнительные детали из описания
             let commitHash = '';
@@ -1303,11 +1215,11 @@
         }
         
         // Показать информационное сообщение
-        function showInfo(message) {
+        function showInfo(message, duration = 5000) {
             infoMessage.textContent = message;
             infoMessage.classList.add('show');
-            // Автоматически скрываем через 5 секунд
-            setTimeout(hideInfo, 5000);
+            // Автоматически скрываем
+            setTimeout(hideInfo, duration);
         }
         
         // Скрыть информационное сообщение
@@ -1325,38 +1237,25 @@
         
         // Настройка обработчиков событий
         function setupEventListeners() {
-            // Кнопка начальной загрузки
-            initBtn.addEventListener('click', loadDataFromGitHub);
-            
-            // Кнопка загрузки из кэша
-            loadCacheBtn.addEventListener('click', loadFromCache);
-            
-            // Кнопка очистки кэша
-            clearCacheBtn.addEventListener('click', () => {
-                if (confirm('Очистить кэш? Все сохраненные данные будут удалены.')) {
-                    localStorage.removeItem(DATA_STORAGE_KEY);
-                    showInfo('Кэш очищен');
-                    showInitMessage(false);
-                }
+            // Кнопка повторной попытки
+            retryBtn.addEventListener('click', async () => {
+                await loadData();
             });
             
             // Кнопка обновления данных
             refreshBtn.addEventListener('click', async () => {
                 showInfo('Обновление данных...');
-                await loadDataFromGitHub();
+                await fetchNewData(false);
             });
             
-            // Кнопка очистки кэша и загрузки заново
-            forceRefreshBtn.addEventListener('click', () => {
-                if (confirm('Очистить кэш и загрузить данные заново?')) {
-                    localStorage.removeItem(DATA_STORAGE_KEY);
-                    allReleases = [];
-                    toolchainReleases = [];
-                    firmwareReleases = [];
-                    routerModels.clear();
-                    
-                    showInitMessage(false);
-                    showInfo('Кэш очищен. Нажмите "Загрузить данные с GitHub"');
+            // Кнопка очистки кэша
+            clearCacheBtn.addEventListener('click', () => {
+                if (confirm('Очистить кэш? Все сохраненные данные будут удалены.')) {
+                    localStorage.removeItem(CACHE_KEY);
+                    showInfo('Кэш очищен. Загружаем новые данные...');
+                    setTimeout(() => {
+                        loadData();
+                    }, 1000);
                 }
             });
             
