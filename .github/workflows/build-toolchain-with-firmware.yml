@@ -393,9 +393,14 @@ jobs:
         git config --global --add safe.directory '*'
         git clone --depth 1 "https://github.com/nilabsent/padavan-ng.git"
         
-        # Скачиваем toolchain
+        # Скачиваем toolchain из созданного релиза
         cd padavan-ng
-        wget -q "https://github.com/arkuid/padavan-ng-test-2/releases/download/latest/toolchain.tzst"
+        # Всегда используем latest релиз toolchain
+        TOOLCHAIN_URL="https://github.com/${{ github.repository }}/releases/latest/download/toolchain.tzst"
+        
+        echo "Downloading toolchain from: $TOOLCHAIN_URL"
+        wget -q "$TOOLCHAIN_URL"
+        
         tar --zstd -xf toolchain.tzst
         rm toolchain.tzst
         
@@ -523,5 +528,26 @@ jobs:
         artifacts: 'padavan-ng_${{ env.CONFIG_VENDOR }}_${{ env.CONFIG_FIRMWARE_PRODUCT_ID }}_${{ env.BUILD_TIMESTAMP }}.zip'
         draft: false
         prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Trigger update-releases-alt workflow
+      if: success()
+      run: |
+        echo "Triggering update-releases-alt workflow..."
+        curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/update-releases-alt.yml/dispatches" \
+          -d '{
+            "ref": "main",
+            "inputs": {
+              "router_model": "${{ env.ROUTER_MODEL }}",
+              "firmware_file": "${{ env.FW_FILE_NAME }}",
+              "commit_date": "${{ needs.check-changes.outputs.commit-date }}",
+              "commit_sha": "${{ needs.check-changes.outputs.commit-sha }}",
+              "build_timestamp": "${{ env.BUILD_TIMESTAMP }}"
+            }
+          }'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
