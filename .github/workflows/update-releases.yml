@@ -11,6 +11,9 @@ on:
     paths:
       - '.github/workflows/update-releases.yml'
 
+permissions:
+  contents: write
+
 jobs:
   update-releases:
     runs-on: ubuntu-latest
@@ -19,8 +22,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        persist-credentials: false
-        fetch-depth: 0
+        token: ${{ secrets.REPO_TOKEN }}
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -30,9 +32,20 @@ jobs:
     - name: Fetch releases from GitHub API
       run: |
         mkdir -p docs
-        curl -s -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/repos/${{ github.repository }}/releases" \
-          > docs/releases.json
+        
+        # Используем GitHub API токен для увеличения лимита
+        curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+             -H "Accept: application/vnd.github.v3+json" \
+             "https://api.github.com/repos/${{ github.repository }}/releases" \
+             > docs/releases.json
+        
+        # Если GITHUB_TOKEN не работает, пробуем без авторизации
+        if [ ! -s docs/releases.json ] || grep -q '"message"' docs/releases.json; then
+          echo "Trying without auth token..."
+          curl -s -H "Accept: application/vnd.github.v3+json" \
+               "https://api.github.com/repos/${{ github.repository }}/releases" \
+               > docs/releases.json
+        fi
         
         # Проверяем что файл создан и содержит данные
         if [ ! -s docs/releases.json ]; then
@@ -40,26 +53,37 @@ jobs:
           exit 1
         fi
         
+        # Проверяем JSON формат
+        if ! jq empty docs/releases.json 2>/dev/null; then
+          echo "Error: releases.json is not valid JSON"
+          exit 1
+        fi
+        
         echo "Releases data saved to docs/releases.json"
         
-        # Создаем timestamp
-        echo '{
-          "last_updated": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
-          "repository": "${{ github.repository }}"
-        }' > docs/releases_meta.json
+        # Создаем метаданные
+        cat > docs/releases_meta.json << EOF
+{
+  "last_updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "repository": "${{ github.repository }}",
+  "total_releases": $(jq length docs/releases.json)
+}
+EOF
+
+    - name: Configure Git
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
 
     - name: Commit and push changes
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        
-        # Добавляем только файлы данных
-        git add docs/releases.json docs/releases_meta.json
-        
         # Проверяем есть ли изменения
-        if git diff --staged --quiet; then
+        git status --porcelain
+        
+        if git diff --quiet && git diff --staged --quiet; then
           echo "No changes to commit"
         else
+          git add docs/releases.json docs/releases_meta.json
           git commit -m "📦 Auto-update releases data [skip ci]"
           git push
           echo "Changes committed and pushed"
