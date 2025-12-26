@@ -602,14 +602,7 @@ jobs:
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/${{ github.repository }}/actions/workflows/update-releases-alt.yml/dispatches" \
           -d '{
-            "ref": "main",
-            "inputs": {
-              "router_model": "${{ env.ROUTER_MODEL }}",
-              "firmware_file": "${{ env.FW_FILE_NAME }}",
-              "commit_date": "${{ needs.check-changes.outputs.commit-date }}",
-              "commit_sha": "${{ needs.check-changes.outputs.commit-sha }}",
-              "build_timestamp": "${{ env.BUILD_TIMESTAMP }}"
-            }
+            "ref": "main"
           }'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
