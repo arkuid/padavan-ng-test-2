@@ -292,16 +292,13 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - check-toolchain-changes
-      - build-toolchain
-    if: |
-      always() &&
-      (needs.check-toolchain-changes.result == 'success' || needs.check-toolchain-changes.result == 'skipped')
+    if: always()
     outputs:
-      should-build: ${{ steps.set-outputs.outputs.should-build || 'false' }}
-      commit-date: ${{ steps.set-outputs.outputs.commit-date || '' }}
-      commit-sha: ${{ steps.set-outputs.outputs.commit-sha || '' }}
-      commit-short-sha: ${{ steps.set-outputs.outputs.commit-short-sha || '' }}
-      latest-commit-message: ${{ steps.set-outputs.outputs.latest-commit-message || '' }}
+      should-build: ${{ steps.check.outputs.should-build }}
+      commit-date: ${{ steps.check.outputs.commit-date }}
+      commit-sha: ${{ steps.check.outputs.commit-sha }}
+      commit-short-sha: ${{ steps.check.outputs.commit-short-sha }}
+      latest-commit-message: ${{ steps.check.outputs.latest-commit-message }}
     steps:
     - name: Check for changes in padavan-ng trunk
       id: check
@@ -411,58 +408,6 @@ jobs:
           echo "No existing firmware for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL. Should build."
           echo "should-build=true" >> $GITHUB_OUTPUT
         fi
-    
-    - name: Set fallback outputs
-      id: set-outputs
-      if: always()
-      run: |
-        # Если предыдущий шаг не создал выходные данные, создаем их здесь
-        echo "=== Setting fallback outputs ==="
-        
-        # Для should-build
-        if [ -z "${{ steps.check.outputs.should-build }}" ]; then
-          echo "should-build=true" >> $GITHUB_OUTPUT
-          echo "Set should-build=true (fallback)"
-        else
-          echo "should-build=${{ steps.check.outputs.should-build }}" >> $GITHUB_OUTPUT
-          echo "Set should-build=${{ steps.check.outputs.should-build }}"
-        fi
-        
-        # Для commit-date
-        if [ -z "${{ steps.check.outputs.commit-date }}" ]; then
-          echo "commit-date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
-          echo "Set commit-date=$(date +'%Y%m%d') (fallback)"
-        else
-          echo "commit-date=${{ steps.check.outputs.commit-date }}" >> $GITHUB_OUTPUT
-          echo "Set commit-date=${{ steps.check.outputs.commit-date }}"
-        fi
-        
-        # Для commit-sha
-        if [ -z "${{ steps.check.outputs.commit-sha }}" ]; then
-          echo "commit-sha=unknown" >> $GITHUB_OUTPUT
-          echo "Set commit-sha=unknown (fallback)"
-        else
-          echo "commit-sha=${{ steps.check.outputs.commit-sha }}" >> $GITHUB_OUTPUT
-          echo "Set commit-sha=${{ steps.check.outputs.commit-sha }}"
-        fi
-        
-        # Для commit-short-sha
-        if [ -z "${{ steps.check.outputs.commit-short-sha }}" ]; then
-          echo "commit-short-sha=unknown" >> $GITHUB_OUTPUT
-          echo "Set commit-short-sha=unknown (fallback)"
-        else
-          echo "commit-short-sha=${{ steps.check.outputs.commit-short-sha }}" >> $GITHUB_OUTPUT
-          echo "Set commit-short-sha=${{ steps.check.outputs.commit-short-sha }}"
-        fi
-        
-        # Для latest-commit-message
-        if [ -z "${{ steps.check.outputs.latest-commit-message }}" ]; then
-          echo "latest-commit-message=unknown" >> $GITHUB_OUTPUT
-          echo "Set latest-commit-message=unknown (fallback)"
-        else
-          echo "latest-commit-message=${{ steps.check.outputs.latest-commit-message }}" >> $GITHUB_OUTPUT
-          echo "Set latest-commit-message=${{ steps.check.outputs.latest-commit-message }}"
-        fi
 
   build:
     runs-on: ubuntu-latest
@@ -471,8 +416,8 @@ jobs:
       - check-toolchain-changes
       - check-changes
     if: |
-      (needs.check-changes.result == 'success' || needs.check-changes.result == 'skipped') &&
-      (needs.check-changes.outputs.should-build == 'true' || github.event_name == 'workflow_dispatch')
+      (needs.check-changes.result == 'success') &&
+      (needs.check-changes.outputs.should-build == 'true')
     defaults:
       run:
         shell: bash
