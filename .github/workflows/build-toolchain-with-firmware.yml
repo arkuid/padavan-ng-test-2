@@ -290,7 +290,9 @@ jobs:
 
   check-changes:
     runs-on: ubuntu-latest
-    needs: check-toolchain-changes
+    needs: 
+      - check-toolchain-changes
+      - build-toolchain
     outputs:
       should-build: ${{ steps.check.outputs.should-build }}
       commit-date: ${{ steps.check.outputs.commit-date }}
