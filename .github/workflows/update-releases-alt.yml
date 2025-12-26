@@ -72,6 +72,6 @@ jobs:
         fi
         
         git add docs/
-        git commit -m "📦 Auto-update releases data [skip ci]"
+        git commit -m "Update releases data"
         git push
         echo "Changes committed and pushed"
