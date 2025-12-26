@@ -1,3 +1,469 @@
+name: Check and Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      router_model:
+        description: "Router model"
+        type: string
+        required: true
+        default: "tplink-c5-v4-16M"
+  schedule:
+    - cron: '0 */7 * * *'
+
+permissions:
+  contents: write
+  actions: write
+  checks: read
+
+jobs:
+  check-toolchain-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      toolchain-changed: ${{ steps.check-toolchain.outputs.toolchain-changed }}
+      toolchain-commit-sha: ${{ steps.check-toolchain.outputs.commit-sha }}
+      toolchain-commit-date: ${{ steps.check-toolchain.outputs.commit-date }}
+    steps:
+    - name: Check for changes in padavan-ng toolchain
+      id: check-toolchain
+      run: |
+        echo "=== Debug: Checking for changes in padavan-ng toolchain ==="
+        
+        # Get last commit from padavan-ng toolchain directory
+        PADAVAN_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/nilabsent/padavan-ng/commits?path=toolchain&per_page=1")
+        
+        # Check if we got a valid response
+        if echo "$PADAVAN_RESPONSE" | jq -e '.[0]' > /dev/null 2>&1; then
+          PADAVAN_LAST_COMMIT=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].commit.committer.date')
+          PADAVAN_COMMIT_SHA=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].sha')
+          echo "Last padavan-ng toolchain commit date: $PADAVAN_LAST_COMMIT"
+          echo "Last padavan-ng toolchain commit SHA: $PADAVAN_COMMIT_SHA"
+          
+          # Format date for release tag (YYYYMMDD format)
+          COMMIT_DATE_FORMATTED=$(date -d "$PADAVAN_LAST_COMMIT" +'%Y%m%d')
+          echo "commit-date=$COMMIT_DATE_FORMATTED" >> $GITHUB_OUTPUT
+          echo "commit-sha=$PADAVAN_COMMIT_SHA" >> $GITHUB_OUTPUT
+        else
+          echo "Error accessing padavan-ng repository, assume toolchain changed"
+          echo "toolchain-changed=true" >> $GITHUB_OUTPUT
+          echo "commit-date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "commit-sha=unknown" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Get ALL releases from OUR repository to check if we already have this toolchain commit
+        # Using pagination to get all releases
+        PAGE=1
+        ALL_RELEASES="[]"
+        
+        while true; do
+          echo "Fetching releases page $PAGE..."
+          PAGE_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100&page=$PAGE")
+          
+          # Check if we got any data
+          PAGE_LENGTH=$(echo "$PAGE_RESPONSE" | jq length)
+          if [ "$PAGE_LENGTH" -eq 0 ]; then
+            break
+          fi
+          
+          # Merge with previous results
+          ALL_RELEASES=$(echo "$ALL_RELEASES" "$PAGE_RESPONSE" | jq -s '.[0] + .[1]')
+          PAGE=$((PAGE + 1))
+          
+          # Safety check to avoid infinite loop
+          if [ $PAGE -gt 10 ]; then
+            echo "Reached max pages (10)"
+            break
+          fi
+        done
+        
+        RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
+        echo "Total releases found: $RELEASE_COUNT"
+        
+        # Check if we already have a release built from this specific toolchain commit
+        ALREADY_BUILT=false
+        for i in $(seq 0 $(($RELEASE_COUNT - 1))); do
+          RELEASE_BODY=$(echo "$ALL_RELEASES" | jq -r ".[$i].body // \"\"")
+          RELEASE_TAG=$(echo "$ALL_RELEASES" | jq -r ".[$i].tag_name // \"\"")
+          
+          # Skip if release body is empty
+          if [ -z "$RELEASE_BODY" ]; then
+            continue
+          fi
+          
+          # Check if this is a toolchain release (has "latest" tag)
+          if echo "$RELEASE_TAG" | grep -qi "latest"; then
+            # Ищем полный коммит в описании релиза
+            if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA"; then
+              echo "Found existing toolchain release for commit $PADAVAN_COMMIT_SHA"
+              echo "Release tag: $RELEASE_TAG"
+              ALREADY_BUILT=true
+              break
+            fi
+            # Также проверяем по короткому хешу (первые 8 символов)
+            SHORT_SHA="${PADAVAN_COMMIT_SHA:0:8}"
+            if echo "$RELEASE_BODY" | grep -q "$SHORT_SHA"; then
+              echo "Found existing toolchain release for short commit $SHORT_SHA"
+              echo "Release tag: $RELEASE_TAG"
+              ALREADY_BUILT=true
+              break
+            fi
+          fi
+        done
+        
+        if [ "$ALREADY_BUILT" = true ]; then
+          echo "Toolchain for commit $PADAVAN_COMMIT_SHA already exists."
+          echo "toolchain-changed=false" >> $GITHUB_OUTPUT
+        else
+          echo "No existing toolchain for commit $PADAVAN_COMMIT_SHA. Toolchain has changed."
+          echo "toolchain-changed=true" >> $GITHUB_OUTPUT
+        fi
+
+  build-toolchain:
+    runs-on: ubuntu-latest
+    needs: check-toolchain-changes
+    if: needs.check-toolchain-changes.outputs.toolchain-changed == 'true'
+    outputs:
+      toolchain-url: ${{ steps.create-release.outputs.download-url }}
+    env:
+      TOOLCHAIN_NAME: "padavan-toolchain"
+      TOOLCHAIN_FILE: "toolchain.tzst"
+      PADAVAN_REPO: "nilabsent/padavan-ng"
+    steps:
+    - name: Clone padavan-ng repository
+      run: |
+        git clone --depth 1 https://github.com/nilabsent/padavan-ng.git padavan-src
+        
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install --no-install-recommends -y \
+            autoconf \
+            automake \
+            bison \
+            bzip2 \
+            ca-certificates \
+            flex \
+            g++ \
+            gawk \
+            gcc \
+            git \
+            gperf \
+            help2man \
+            libncurses5-dev \
+            libstdc++6 \
+            libtool \
+            libtool-bin \
+            make \
+            patch \
+            texinfo \
+            unzip \
+            wget \
+            xz-utils \
+            zstd
+
+    - name: Build toolchain from padavan-ng
+      run: |
+        cd padavan-src/toolchain
+        chmod +x *.sh
+        ./clean_sources.sh
+        ./build_toolchain.sh
+        
+    - name: Create toolchain archive
+      run: |
+        mkdir -p temp_toolchain/toolchain
+        cp -r padavan-src/toolchain/out temp_toolchain/toolchain/
+        tar -I "zstd -9 -T0" -cf ${{ env.TOOLCHAIN_FILE }} -C temp_toolchain toolchain
+        echo "Archive created: ${{ env.TOOLCHAIN_FILE }}"
+        ls -la ${{ env.TOOLCHAIN_FILE }}
+        
+    - name: Upload toolchain as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.TOOLCHAIN_NAME }}
+        path: ${{ env.TOOLCHAIN_FILE }}
+        retention-days: 30
+
+    - name: Get current date for release body
+      id: date
+      run: |
+        CURRENT_DATE=$(date +'%Y-%m-%d %H:%M:%S')
+        echo "current-date=$CURRENT_DATE" >> $GITHUB_OUTPUT
+        
+    - name: Delete existing latest release
+      run: |
+        # Check if latest release exists and delete it
+        LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/tags/latest" || echo '{}')
+        
+        LATEST_RELEASE_ID=$(echo "$LATEST_RELEASE" | jq -r '.id // empty')
+        
+        if [ ! -z "$LATEST_RELEASE_ID" ] && [ "$LATEST_RELEASE_ID" != "null" ]; then
+          echo "Deleting existing latest release (ID: $LATEST_RELEASE_ID)"
+          curl -s -X DELETE \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/$LATEST_RELEASE_ID"
+        fi
+        
+        # Also delete the latest tag
+        curl -s -X DELETE \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/latest" || echo "Tag may not exist"
+
+    - name: Create release with asset
+      id: create-release
+      run: |
+        # Create a temporary file with the release data
+        cat > release_data.json << EOF
+        {
+          "tag_name": "latest",
+          "name": "Latest Padavan Toolchain",
+          "body": "Latest automatically built toolchain from nilabsent/padavan-ng\n\n**Source:** ${{ env.PADAVAN_REPO }}\n**Build Date:** ${{ steps.date.outputs.current-date }}\n**Based on padavan-ng toolchain commit:** ${{ needs.check-toolchain-changes.outputs.toolchain-commit-sha }}\n**Commit Date:** ${{ needs.check-toolchain-changes.outputs.toolchain-commit-date }}\n\nUse this URL to always get the newest toolchain:\n\`https://github.com/${{ github.repository }}/releases/latest/download/${{ env.TOOLCHAIN_FILE }}\`",
+          "draft": false,
+          "prerelease": false
+        }
+        EOF
+        
+        # First create the release
+        RELEASE_RESPONSE=$(curl -s -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          --data-binary @release_data.json \
+          "https://api.github.com/repos/${{ github.repository }}/releases")
+        
+        echo "Release response: $RELEASE_RESPONSE"
+        
+        # Get the upload URL from the response
+        UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | jq -r '.upload_url' | sed 's/{.*}//')
+        RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r '.id')
+        
+        echo "Upload URL: $UPLOAD_URL"
+        echo "Release ID: $RELEASE_ID"
+        
+        if [ "$UPLOAD_URL" != "null" ] && [ ! -z "$UPLOAD_URL" ]; then
+          # Upload the asset
+          echo "Uploading asset ${{ env.TOOLCHAIN_FILE }}"
+          ASSET_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @"${{ env.TOOLCHAIN_FILE }}" \
+            "$UPLOAD_URL?name=${{ env.TOOLCHAIN_FILE }}")
+          
+          echo "Asset upload response: $ASSET_RESPONSE"
+          
+          # Check if upload was successful
+          if echo "$ASSET_RESPONSE" | jq -e '.browser_download_url' > /dev/null 2>&1; then
+            DOWNLOAD_URL=$(echo "$ASSET_RESPONSE" | jq -r '.browser_download_url')
+            echo "download-url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+            echo "✅ Asset uploaded successfully: $DOWNLOAD_URL"
+          else
+            echo "❌ Asset upload failed"
+            exit 1
+          fi
+        else
+          echo "❌ Failed to create release or get upload URL"
+          exit 1
+        fi
+
+    - name: Verify release asset
+      run: |
+        echo "Waiting 10 seconds for GitHub to process the release..."
+        sleep 10
+        
+        # Check if the asset is accessible
+        DOWNLOAD_URL="${{ steps.create-release.outputs.download-url }}"
+        echo "Checking: $DOWNLOAD_URL"
+        
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L "$DOWNLOAD_URL")
+        echo "HTTP Status: $HTTP_STATUS"
+        
+        if [ "$HTTP_STATUS" -eq 200 ]; then
+          echo "✅ SUCCESS: Asset is accessible at $DOWNLOAD_URL"
+          echo "You can now use this URL in other workflows:"
+          echo "wget $DOWNLOAD_URL"
+        else
+          echo "❌ ERROR: Asset is not accessible (HTTP $HTTP_STATUS)"
+          echo "The download URL may not work yet. Try again in a few minutes."
+        fi
+
+  check-changes:
+    runs-on: ubuntu-latest
+    needs:
+      - check-toolchain-changes
+      - build-toolchain
+    if: |
+      always() &&
+      (needs.check-toolchain-changes.result == 'success' || needs.check-toolchain-changes.result == 'skipped')
+    outputs:
+      should-build: ${{ steps.set-outputs.outputs.should-build || 'false' }}
+      commit-date: ${{ steps.set-outputs.outputs.commit-date || '' }}
+      commit-sha: ${{ steps.set-outputs.outputs.commit-sha || '' }}
+      commit-short-sha: ${{ steps.set-outputs.outputs.commit-short-sha || '' }}
+      latest-commit-message: ${{ steps.set-outputs.outputs.latest-commit-message || '' }}
+    steps:
+    - name: Check for changes in padavan-ng trunk
+      id: check
+      shell: bash
+      run: |
+        echo "=== Debug: Checking for changes in padavan-ng trunk ==="
+        
+        # Получаем последние коммиты для trunk
+        PADAVAN_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/nilabsent/padavan-ng/commits?path=trunk&per_page=1")
+        
+        # Проверяем валидность ответа
+        if echo "$PADAVAN_RESPONSE" | jq -e '.[0]' > /dev/null 2>&1; then
+          PADAVAN_LAST_COMMIT=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].commit.committer.date')
+          PADAVAN_COMMIT_SHA=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].sha')
+          PADAVAN_COMMIT_MESSAGE=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].commit.message')
+          PADAVAN_SHORT_SHA="${PADAVAN_COMMIT_SHA:0:8}"
+          
+          echo "Last padavan-ng trunk commit date: $PADAVAN_LAST_COMMIT"
+          echo "Last padavan-ng trunk commit SHA: $PADAVAN_COMMIT_SHA"
+          echo "Last commit message: $PADAVAN_COMMIT_MESSAGE"
+          
+          # Форматируем дату для тега релиза
+          COMMIT_DATE_FORMATTED=$(date -d "$PADAVAN_LAST_COMMIT" +'%Y%m%d')
+          echo "commit-date=$COMMIT_DATE_FORMATTED" >> $GITHUB_OUTPUT
+          echo "commit-sha=$PADAVAN_COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "commit-short-sha=$PADAVAN_SHORT_SHA" >> $GITHUB_OUTPUT
+          
+          # Обрабатываем многострочное сообщение коммита
+          ESCAPED_MESSAGE=$(echo "$PADAVAN_COMMIT_MESSAGE" | tr '\n' ' ' | sed 's/"/\\"/g' | sed 's/\r//g')
+          echo "latest-commit-message=$ESCAPED_MESSAGE" >> $GITHUB_OUTPUT
+        else
+          echo "Error accessing padavan-ng repository, building anyway"
+          CURRENT_DATE=$(date +'%Y%m%d')
+          echo "should-build=true" >> $GITHUB_OUTPUT
+          echo "commit-date=$CURRENT_DATE" >> $GITHUB_OUTPUT
+          echo "commit-sha=unknown" >> $GITHUB_OUTPUT
+          echo "commit-short-sha=unknown" >> $GITHUB_OUTPUT
+          echo "latest-commit-message=unknown" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Получаем ВСЕ релизы из НАШЕГО репозитория для проверки
+        # Используем пагинацию для получения всех релизов
+        PAGE=1
+        ALL_RELEASES="[]"
+        
+        while true; do
+          echo "Fetching releases page $PAGE..."
+          PAGE_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100&page=$PAGE")
+          
+          # Проверяем, получили ли мы данные
+          PAGE_LENGTH=$(echo "$PAGE_RESPONSE" | jq length)
+          if [ "$PAGE_LENGTH" -eq 0 ]; then
+            break
+          fi
+          
+          # Объединяем с предыдущими результатами
+          ALL_RELEASES=$(echo "$ALL_RELEASES" "$PAGE_RESPONSE" | jq -s '.[0] + .[1]')
+          PAGE=$((PAGE + 1))
+          
+          # Защита от бесконечного цикла
+          if [ $PAGE -gt 10 ]; then
+            echo "Reached max pages (10)"
+            break
+          fi
+        done
+        
+        RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
+        echo "Total releases found: $RELEASE_COUNT"
+        
+        # Определяем модель роутера (для workflow_dispatch или schedule)
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          ROUTER_MODEL="${{ github.event.inputs.router_model }}"
+        else
+          # Для schedule используем модель по умолчанию
+          ROUTER_MODEL="tplink-c5-v4-16M"
+        fi
+        echo "Checking for router model: $ROUTER_MODEL"
+        
+        # Проверяем, есть ли уже релиз для этой модели роутера и этого коммита trunk
+        ALREADY_BUILT=false
+        for i in $(seq 0 $(($RELEASE_COUNT - 1))); do
+          RELEASE_BODY=$(echo "$ALL_RELEASES" | jq -r ".[$i].body // \"\"")
+          RELEASE_TAG=$(echo "$ALL_RELEASES" | jq -r ".[$i].tag_name // \"\"")
+          
+          # Skip if release body is empty
+          if [ -z "$RELEASE_BODY" ]; then
+            continue
+          fi
+          
+          # Ищем полный коммит в описании релиза И модель роутера
+          if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA" && \
+             echo "$RELEASE_BODY" | grep -qi "$ROUTER_MODEL"; then
+            echo "Found existing release for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL"
+            echo "Release tag: $RELEASE_TAG"
+            ALREADY_BUILT=true
+            break
+          fi
+        done
+        
+        if [ "$ALREADY_BUILT" = true ]; then
+          echo "Firmware for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL already exists. Skipping build."
+          echo "should-build=false" >> $GITHUB_OUTPUT
+        else
+          echo "No existing firmware for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL. Should build."
+          echo "should-build=true" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Set fallback outputs
+      id: set-outputs
+      if: always()
+      run: |
+        # Если предыдущий шаг не создал выходные данные, создаем их здесь
+        echo "=== Setting fallback outputs ==="
+        
+        # Для should-build
+        if [ -z "${{ steps.check.outputs.should-build }}" ]; then
+          echo "should-build=true" >> $GITHUB_OUTPUT
+          echo "Set should-build=true (fallback)"
+        else
+          echo "should-build=${{ steps.check.outputs.should-build }}" >> $GITHUB_OUTPUT
+          echo "Set should-build=${{ steps.check.outputs.should-build }}"
+        fi
+        
+        # Для commit-date
+        if [ -z "${{ steps.check.outputs.commit-date }}" ]; then
+          echo "commit-date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "Set commit-date=$(date +'%Y%m%d') (fallback)"
+        else
+          echo "commit-date=${{ steps.check.outputs.commit-date }}" >> $GITHUB_OUTPUT
+          echo "Set commit-date=${{ steps.check.outputs.commit-date }}"
+        fi
+        
+        # Для commit-sha
+        if [ -z "${{ steps.check.outputs.commit-sha }}" ]; then
+          echo "commit-sha=unknown" >> $GITHUB_OUTPUT
+          echo "Set commit-sha=unknown (fallback)"
+        else
+          echo "commit-sha=${{ steps.check.outputs.commit-sha }}" >> $GITHUB_OUTPUT
+          echo "Set commit-sha=${{ steps.check.outputs.commit-sha }}"
+        fi
+        
+        # Для commit-short-sha
+        if [ -z "${{ steps.check.outputs.commit-short-sha }}" ]; then
+          echo "commit-short-sha=unknown" >> $GITHUB_OUTPUT
+          echo "Set commit-short-sha=unknown (fallback)"
+        else
+          echo "commit-short-sha=${{ steps.check.outputs.commit-short-sha }}" >> $GITHUB_OUTPUT
+          echo "Set commit-short-sha=${{ steps.check.outputs.commit-short-sha }}"
+        fi
+        
+        # Для latest-commit-message
+        if [ -z "${{ steps.check.outputs.latest-commit-message }}" ]; then
+          echo "latest-commit-message=unknown" >> $GITHUB_OUTPUT
+          echo "Set latest-commit-message=unknown (fallback)"
+        else
+          echo "latest-commit-message=${{ steps.check.outputs.latest-commit-message }}" >> $GITHUB_OUTPUT
+          echo "Set latest-commit-message=${{ steps.check.outputs.latest-commit-message }}"
+        fi
+
   build:
     runs-on: ubuntu-latest
     container: ghcr.io/arkuid/padavan-ng-test-2:latest
