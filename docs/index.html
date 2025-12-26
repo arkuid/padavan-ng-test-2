@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Padavan-ng Releases</title>
     <style>
-        /* Все стили остаются без изменений */
         :root {
             --bg-color: #ffffff;
             --text-color: #1a1a1a;
@@ -538,10 +537,6 @@
                 <div id="progress-bar" style="width: 0%; height: 4px; background: var(--primary-color); border-radius: 2px; transition: width 0.3s;"></div>
             </div>
             <button id="retry-btn" class="init-btn" style="display: none;">🔄 Повторить попытку</button>
-            <div id="debug-info" style="margin-top: 20px; font-size: 0.8rem; color: #666; display: none;">
-                <p id="debug-url"></p>
-                <p id="debug-status"></p>
-            </div>
         </div>
 
         <!-- Секции с данными изначально скрыты -->
@@ -584,11 +579,6 @@
         
         <button id="refresh-btn" class="refresh-btn">🔄 Обновить данные</button>
         <button id="clear-cache-btn" class="refresh-btn secondary">🗑️ Очистить кэш</button>
-        <a href="https://github.com/arkuid/padavan-ng-test-2/actions/workflows/update-releases-alt.yml" 
-           class="refresh-btn secondary" target="_blank">
-           🔧 Управление Actions
-        </a>
-        <button id="debug-toggle" class="refresh-btn secondary">🐛 Debug</button>
     </footer>
 
     <script>
@@ -628,7 +618,6 @@
         let firmwareReleases = [];
         let routerModels = new Set();
         let lastUpdateTime = null;
-        let debugMode = false;
         
         // DOM элементы
         const searchInput = document.getElementById('search-input');
@@ -643,10 +632,6 @@
         const dataSections = document.getElementById('data-sections');
         const refreshBtn = document.getElementById('refresh-btn');
         const clearCacheBtn = document.getElementById('clear-cache-btn');
-        const debugToggle = document.getElementById('debug-toggle');
-        const debugInfo = document.getElementById('debug-info');
-        const debugUrl = document.getElementById('debug-url');
-        const debugStatus = document.getElementById('debug-status');
         const lastUpdate = document.getElementById('last-update');
         const nextUpdate = document.getElementById('next-update');
         
@@ -771,11 +756,6 @@
         async function loadMetadata() {
             for (const path of META_PATHS) {
                 try {
-                    if (debugMode) {
-                        debugUrl.textContent = `Пробуем: ${path}`;
-                        debugStatus.textContent = 'Загрузка...';
-                    }
-                    
                     const response = await fetch(path + '?t=' + Date.now());
                     if (response.ok) {
                         const meta = await response.json();
@@ -792,24 +772,10 @@
                         updateLastUpdateDisplay();
                         
                         console.log('📊 Метаданные загружены по пути:', path);
-                        
-                        if (debugMode) {
-                            debugStatus.textContent = '✅ Успешно';
-                        }
-                        
                         return;
                     }
-                    
-                    if (debugMode) {
-                        debugStatus.textContent = `❌ ${response.status}`;
-                    }
-                    
                 } catch (error) {
                     console.log(`⚠️ Путь ${path} не сработал:`, error.message);
-                    
-                    if (debugMode) {
-                        debugStatus.textContent = `❌ ${error.message}`;
-                    }
                 }
             }
             
@@ -824,23 +790,14 @@
             for (const path of DATA_PATHS) {
                 try {
                     if (!silent) {
-                        showLoading(`Пробуем путь: ${path}`);
+                        showLoading(`Загрузка данных...`);
                         updateProgress(30);
-                    }
-                    
-                    if (debugMode) {
-                        debugUrl.textContent = `Пробуем: ${path}`;
-                        debugStatus.textContent = 'Загрузка...';
                     }
                     
                     console.log(`⬇️ Пробуем загрузить данные по пути: ${path}`);
                     
                     // Загружаем релизы
                     const releasesResponse = await fetch(path + '?t=' + Date.now());
-                    
-                    if (debugMode) {
-                        debugStatus.textContent = `Статус: ${releasesResponse.status}`;
-                    }
                     
                     if (!releasesResponse.ok) {
                         throw new Error(`HTTP ${releasesResponse.status}: ${releasesResponse.statusText}`);
@@ -902,11 +859,6 @@
                     
                 } catch (error) {
                     console.log(`❌ Путь ${path} не сработал:`, error.message);
-                    
-                    if (debugMode) {
-                        debugStatus.textContent = `❌ ${error.message}`;
-                    }
-                    
                     // Продолжаем пробовать другие пути
                     continue;
                 }
@@ -1068,10 +1020,6 @@
             }
             
             retryBtn.style.display = 'none';
-            
-            if (debugMode) {
-                debugInfo.style.display = 'block';
-            }
         }
         
         // Показать кнопку повторной попытки
@@ -1344,14 +1292,6 @@
                         loadData();
                     }, 1000);
                 }
-            });
-            
-            // Кнопка отладки
-            debugToggle.addEventListener('click', () => {
-                debugMode = !debugMode;
-                debugInfo.style.display = debugMode ? 'block' : 'none';
-                debugToggle.textContent = debugMode ? '🐛 Debug ON' : '🐛 Debug';
-                console.log('Debug mode:', debugMode);
             });
             
             // Фильтры
