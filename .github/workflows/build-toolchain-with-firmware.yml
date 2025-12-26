@@ -52,28 +52,64 @@ jobs:
           exit 0
         fi
         
-        # Get releases from OUR repository to check if we already have this toolchain commit
-        ALL_RELEASES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/releases" || echo '[]')
+        # Get ALL releases from OUR repository to check if we already have this toolchain commit
+        # Using pagination to get all releases
+        PAGE=1
+        ALL_RELEASES="[]"
         
-        echo "Number of releases found: $(echo "$ALL_RELEASES" | jq length)"
+        while true; do
+          echo "Fetching releases page $PAGE..."
+          PAGE_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100&page=$PAGE")
+          
+          # Check if we got any data
+          PAGE_LENGTH=$(echo "$PAGE_RESPONSE" | jq length)
+          if [ "$PAGE_LENGTH" -eq 0 ]; then
+            break
+          fi
+          
+          # Merge with previous results
+          ALL_RELEASES=$(echo "$ALL_RELEASES" "$PAGE_RESPONSE" | jq -s '.[0] + .[1]')
+          PAGE=$((PAGE + 1))
+          
+          # Safety check to avoid infinite loop
+          if [ $PAGE -gt 10 ]; then
+            echo "Reached max pages (10)"
+            break
+          fi
+        done
+        
+        RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
+        echo "Total releases found: $RELEASE_COUNT"
         
         # Check if we already have a release built from this specific toolchain commit
         ALREADY_BUILT=false
-        for release in $(echo "$ALL_RELEASES" | jq -r '.[] | @base64'); do
-          RELEASE_BODY=$(echo "$release" | base64 --decode | jq -r '.body')
-          # Ищем полный коммит в описании релиза
-          if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA"; then
-            echo "Found existing release for commit $PADAVAN_COMMIT_SHA"
-            ALREADY_BUILT=true
-            break
+        for i in $(seq 0 $(($RELEASE_COUNT - 1))); do
+          RELEASE_BODY=$(echo "$ALL_RELEASES" | jq -r ".[$i].body // \"\"")
+          RELEASE_TAG=$(echo "$ALL_RELEASES" | jq -r ".[$i].tag_name // \"\"")
+          
+          # Skip if release body is empty
+          if [ -z "$RELEASE_BODY" ]; then
+            continue
           fi
-          # Также проверяем по короткому хешу (первые 8 символов)
-          SHORT_SHA="${PADAVAN_COMMIT_SHA:0:8}"
-          if echo "$RELEASE_BODY" | grep -q "$SHORT_SHA"; then
-            echo "Found existing release for short commit $SHORT_SHA"
-            ALREADY_BUILT=true
-            break
+          
+          # Check if this is a toolchain release (has "latest" tag)
+          if echo "$RELEASE_TAG" | grep -qi "latest"; then
+            # Ищем полный коммит в описании релиза
+            if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA"; then
+              echo "Found existing toolchain release for commit $PADAVAN_COMMIT_SHA"
+              echo "Release tag: $RELEASE_TAG"
+              ALREADY_BUILT=true
+              break
+            fi
+            # Также проверяем по короткому хешу (первые 8 символов)
+            SHORT_SHA="${PADAVAN_COMMIT_SHA:0:8}"
+            if echo "$RELEASE_BODY" | grep -q "$SHORT_SHA"; then
+              echo "Found existing toolchain release for short commit $SHORT_SHA"
+              echo "Release tag: $RELEASE_TAG"
+              ALREADY_BUILT=true
+              break
+            fi
           fi
         done
         
@@ -290,7 +326,6 @@ jobs:
           echo "commit-short-sha=$PADAVAN_SHORT_SHA" >> $GITHUB_OUTPUT
           
           # Обрабатываем многострочное сообщение коммита
-          # Удаляем переносы строк и экранируем специальные символы
           ESCAPED_MESSAGE=$(echo "$PADAVAN_COMMIT_MESSAGE" | tr '\n' ' ' | sed 's/"/\\"/g' | sed 's/\r//g')
           echo "latest-commit-message=$ESCAPED_MESSAGE" >> $GITHUB_OUTPUT
         else
@@ -305,11 +340,34 @@ jobs:
         fi
         
         # Получаем ВСЕ релизы из НАШЕГО репозитория для проверки
-        ALL_RELEASES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/${{ github.repository }}/releases" || echo '[]')
+        # Используем пагинацию для получения всех релизов
+        PAGE=1
+        ALL_RELEASES="[]"
+        
+        while true; do
+          echo "Fetching releases page $PAGE..."
+          PAGE_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100&page=$PAGE")
+          
+          # Проверяем, получили ли мы данные
+          PAGE_LENGTH=$(echo "$PAGE_RESPONSE" | jq length)
+          if [ "$PAGE_LENGTH" -eq 0 ]; then
+            break
+          fi
+          
+          # Объединяем с предыдущими результатами
+          ALL_RELEASES=$(echo "$ALL_RELEASES" "$PAGE_RESPONSE" | jq -s '.[0] + .[1]')
+          PAGE=$((PAGE + 1))
+          
+          # Защита от бесконечного цикла
+          if [ $PAGE -gt 10 ]; then
+            echo "Reached max pages (10)"
+            break
+          fi
+        done
         
         RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
-        echo "Number of releases found: $RELEASE_COUNT"
+        echo "Total releases found: $RELEASE_COUNT"
         
         # Определяем модель роутера (для workflow_dispatch или schedule)
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -322,9 +380,14 @@ jobs:
         
         # Проверяем, есть ли уже релиз для этой модели роутера и этого коммита trunk
         ALREADY_BUILT=false
-        for release in $(echo "$ALL_RELEASES" | jq -r '.[] | @base64'); do
-          RELEASE_BODY=$(echo "$release" | base64 --decode | jq -r '.body')
-          RELEASE_TAG=$(echo "$release" | base64 --decode | jq -r '.tag_name')
+        for i in $(seq 0 $(($RELEASE_COUNT - 1))); do
+          RELEASE_BODY=$(echo "$ALL_RELEASES" | jq -r ".[$i].body // \"\"")
+          RELEASE_TAG=$(echo "$ALL_RELEASES" | jq -r ".[$i].tag_name // \"\"")
+          
+          # Skip if release body is empty
+          if [ -z "$RELEASE_BODY" ]; then
+            continue
+          fi
           
           # Ищем полный коммит в описании релиза И модель роутера
           if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA" && \
