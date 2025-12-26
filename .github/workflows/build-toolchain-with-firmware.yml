@@ -9,11 +9,11 @@ on:
         required: true
         default: "tplink-c5-v4-16M"
   schedule:
-    - cron: '0 21,9 * * *'
+    - cron: '0 */7 * * *'
 
 permissions:
   contents: write
-  actions: read
+  actions: write
   checks: read
 
 jobs:
