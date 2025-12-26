@@ -147,7 +147,7 @@
         "state": "uploaded",
         "size": 7111833,
         "digest": "sha256:9824e5293f81b1ba0564b15035f19c7fb705ca49c4c55f45799b86ae5441edb3",
-        "download_count": 0,
+        "download_count": 1,
         "created_at": "2025-12-26T15:52:32Z",
         "updated_at": "2025-12-26T15:52:32Z",
         "browser_download_url": "https://github.com/arkuid/padavan-ng-test-2/releases/download/build-20251226_6e3869de_ac12g/padavan-ng_TPLINK_AC12G-V1_2025.12.26_15.52.30.zip"
