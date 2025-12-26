@@ -290,9 +290,12 @@ jobs:
 
   check-changes:
     runs-on: ubuntu-latest
-    needs: 
+    needs:
       - check-toolchain-changes
       - build-toolchain
+    if: |
+      always() &&
+      (needs.check-toolchain-changes.result == 'success' || needs.check-toolchain-changes.result == 'skipped')
     outputs:
       should-build: ${{ steps.check.outputs.should-build }}
       commit-date: ${{ steps.check.outputs.commit-date }}
