@@ -1,0 +1,66 @@
+name: Update Releases Data
+
+on:
+  schedule:
+    # Запускать каждый день в полночь UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Позволяет запускать вручную
+  push:
+    branches: [ main, master ]
+    paths:
+      - '.github/workflows/update-releases.yml'
+
+jobs:
+  update-releases:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Fetch releases from GitHub API
+      run: |
+        mkdir -p docs
+        curl -s -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${{ github.repository }}/releases" \
+          > docs/releases.json
+        
+        # Проверяем что файл создан и содержит данные
+        if [ ! -s docs/releases.json ]; then
+          echo "Error: releases.json is empty or not created"
+          exit 1
+        fi
+        
+        echo "Releases data saved to docs/releases.json"
+        
+        # Создаем timestamp
+        echo '{
+          "last_updated": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
+          "repository": "${{ github.repository }}"
+        }' > docs/releases_meta.json
+
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Добавляем только файлы данных
+        git add docs/releases.json docs/releases_meta.json
+        
+        # Проверяем есть ли изменения
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "📦 Auto-update releases data [skip ci]"
+          git push
+          echo "Changes committed and pushed"
+        fi
