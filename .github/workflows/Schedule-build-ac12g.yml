@@ -1,4 +1,4 @@
-name: Schedule build ac12g
+name: Schedule ac12g
 
 on:
   schedule:
@@ -8,9 +8,12 @@ on:
 jobs:
   trigger-workflow:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     
     steps:
-      - name: Check and Build ac12g
+      - name: Check and Build ac
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: build-toolchain-with-firmware.yml
