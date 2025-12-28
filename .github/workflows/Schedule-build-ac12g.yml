@@ -1,0 +1,20 @@
+name: Schedule build ac12g
+
+on:
+  schedule:
+    - cron: '0 */7 * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger-workflow:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check and Build ac12g
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: build-toolchain-with-firmware.yml
+          repo: ${{ github.repository }}
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+          inputs: '{"router_model": "ac12g"}'
