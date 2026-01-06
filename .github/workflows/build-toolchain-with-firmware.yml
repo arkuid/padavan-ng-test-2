@@ -5,9 +5,12 @@ on:
     inputs:
       router_model:
         description: "Router model"
-        type: string
+        type: choice
         required: true
         default: "tplink-c5-v4-16M"
+        options:
+          - "ac12g"
+          - "tplink-c5-v4-16M"
   schedule:
     - cron: '0 */7 * * *'
 
