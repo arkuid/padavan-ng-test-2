@@ -515,9 +515,6 @@ jobs:
         else
           echo "No config files found for $ROUTER_MODEL, skipping..."
         fi
-        echo "Copying logo files..."
-        cp -rv $WORKSPACE_PATH/routers/logo/* padavan-ng/trunk/user/www/logo/
-
         # Копируем основной конфиг
         cp $WORKSPACE_PATH/build-$ROUTER_MODEL.config padavan-ng/trunk/.config
 
