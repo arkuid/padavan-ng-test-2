@@ -518,6 +518,9 @@ jobs:
         # Копируем основной конфиг
         cp $WORKSPACE_PATH/build-$ROUTER_MODEL.config padavan-ng/trunk/.config
 
+    - name: Run custom pre-build script
+      run: '[[ -f pre-build-$ROUTER_MODEL.sh ]] && . pre-build-$ROUTER_MODEL.sh || :'
+
     - name: Build firmware
       run: |
         ROUTER_MODEL="${{ env.ROUTER_MODEL }}"
