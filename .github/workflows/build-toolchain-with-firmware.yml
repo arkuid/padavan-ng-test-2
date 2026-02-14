@@ -517,8 +517,8 @@ jobs:
         fi
         # Копируем основной конфиг
         cp $WORKSPACE_PATH/build-$ROUTER_MODEL.config padavan-ng/trunk/.config
-        cp -rfv "$WORKSPACE_PATH/routers/routers/MT7620_AP_2T2R-4L_external_LNA_internal PA_V15.BIN" padavan-ng/trunk/vendors/Mediatek/
-        cp -rfv "$WORKSPACE_PATH/routers/routers/MT7612E_EEPROM_layout_20131121_5G_iPAiLNA_wTSSI default slope offset.bin" padavan-ng/trunk/vendors/Mediatek/
+        cp -rfv "$WORKSPACE_PATH/routers/MT7620_AP_2T2R-4L_external_LNA_internal PA_V15.BIN" padavan-ng/trunk/vendors/Mediatek/
+        cp -rfv "$WORKSPACE_PATH/routers/MT7612E_EEPROM_layout_20131121_5G_iPAiLNA_wTSSI default slope offset.bin" padavan-ng/trunk/vendors/Mediatek/
 
     - name: Run custom pre-build script
       run: '[[ -f pre-build-$ROUTER_MODEL.sh ]] && . pre-build-$ROUTER_MODEL.sh || :'
