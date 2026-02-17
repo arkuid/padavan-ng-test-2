@@ -62,6 +62,9 @@ jobs:
         cd ..
         cp -r routers/configs/$ROUTER_MODEL/* padavan-ng/trunk/configs/
         cp build-$ROUTER_MODEL.config padavan-ng/trunk/.config
+        # cp -rfv "routers/MT7620_AP_2T2R-4L_external_LNA_internal PA_V15.BIN" "padavan-ng/trunk/vendors/Mediatek/MT7620_AP_2T2R-4L_external_LNA_internal_PA_V15.bin"
+        cp -rfv "routers/MT7612E_EEPROM_layout_20131121_5G_iPAiLNA_wTSSI default slope offset.bin" "padavan-ng/trunk/vendors/Mediatek/MT7612E_EEPROM.bin"
+
 
     - name: Build firmware
       run: |
