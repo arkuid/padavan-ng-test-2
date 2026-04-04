@@ -11,6 +11,13 @@ on:
         options:
           - "ac12g"
           - "tplink-c5-v4-16M"
+          - "tp-wr842n-v5-16mb"
+
+      commit-hash:
+        description: 'Хеш коммита для переключения'
+        required: true
+        type: string
+        default: 'HEAD'
 
 permissions:
   contents: write
@@ -47,6 +54,12 @@ jobs:
         git config --global --add safe.directory '*'
         git clone --depth 1 "https://github.com/nilabsent/padavan-ng.git"
         cd padavan-ng
+        if [ "${{ github.event.inputs.commit-hash }}" != "HEAD" ]; then
+            git checkout ${{ github.event.inputs.commit-hash }}
+            echo "Переключено на коммит: ${{ github.event.inputs.commit-hash }}"
+        else
+            echo "HEAD выбран, остаёмся на текущем коммите"
+        fi
         wget -q "https://github.com/arkuid/padavan-ng-test-2/releases/download/latest/toolchain.tzst"
         tar --zstd -xf toolchain.tzst
         rm toolchain.tzst
@@ -63,7 +76,7 @@ jobs:
         cp -r routers/configs/$ROUTER_MODEL/* padavan-ng/trunk/configs/
         cp build-$ROUTER_MODEL.config padavan-ng/trunk/.config
         # cp -rfv "routers/MT7620_AP_2T2R-4L_external_LNA_internal PA_V15.BIN" "padavan-ng/trunk/vendors/Mediatek/MT7620_AP_2T2R-4L_external_LNA_internal_PA_V15.bin"
-        cp -rfv "routers/MT7612E_EEPROM_layout_20131121_5G_iPAiLNA_wTSSI default slope offset.bin" "padavan-ng/trunk/vendors/Mediatek/MT7612E_EEPROM.bin"
+        # cp -rfv "routers/MT7612E_EEPROM_layout_20131121_5G_iPAiLNA_wTSSI default slope offset.bin" "padavan-ng/trunk/vendors/Mediatek/MT7612E_EEPROM.bin"
 
 
     - name: Build firmware
