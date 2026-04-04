@@ -52,7 +52,7 @@ jobs:
     - name: Download sources and toolchain
       run: |
         git config --global --add safe.directory '*'
-        git clone --depth 1 "https://github.com/nilabsent/padavan-ng.git"
+        git clone "https://github.com/nilabsent/padavan-ng.git"
         cd padavan-ng
         if [ "${{ github.event.inputs.commit-hash }}" != "HEAD" ]; then
             git checkout ${{ github.event.inputs.commit-hash }}
