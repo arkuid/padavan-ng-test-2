@@ -1,4 +1,4 @@
-name: Check and Build artifacts
+name: Build artifacts
 
 on:
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
         shell: bash
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6.0.2
 
     - name: Set router model
       run: |
