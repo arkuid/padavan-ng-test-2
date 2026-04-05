@@ -1,0 +1,15 @@
+--- a/trunk/linux-3.4.x/drivers/char/ralink/ralink_gpio.c
++++ b/trunk/linux-3.4.x/drivers/char/ralink/ralink_gpio.c
+@@ -1540,9 +1540,9 @@ int __init ralink_gpio_init(void)
+ #elif defined(CONFIG_RALINK_GPIOMODE_SPI_REFCLK) && defined(RALINK_GPIOMODE_SPI_REFCLK)
+ 	gpiomode |= RALINK_GPIOMODE_SPI_REFCLK;
+ #endif
+-#if defined(CONFIG_RALINK_GPIOMODE_I2S) && defined(RALINK_GPIOMODE_I2S)
+-	gpiomode |= RALINK_GPIOMODE_I2S;
+-#endif
++//#if defined(CONFIG_RALINK_GPIOMODE_I2S) && defined(RALINK_GPIOMODE_I2S)
++//	gpiomode |= RALINK_GPIOMODE_I2S;
++// #endif
+ #if defined(CONFIG_RALINK_GPIOMODE_UARTF) && defined(RALINK_GPIOMODE_UARTF)
+ 	gpiomode |= RALINK_GPIOMODE_UARTF;
+ #endif
