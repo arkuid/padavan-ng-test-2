@@ -1,10 +1,10 @@
 [
   {
-    "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/305250521",
-    "assets_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/305250521/assets",
-    "upload_url": "https://uploads.github.com/repos/arkuid/padavan-ng-test-2/releases/305250521/assets{?name,label}",
-    "html_url": "https://github.com/arkuid/padavan-ng-test-2/releases/tag/build-20260331_5c20d65e_tp-wr842n-v5-16mb",
-    "id": 305250521,
+    "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/305391408",
+    "assets_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/305391408/assets",
+    "upload_url": "https://uploads.github.com/repos/arkuid/padavan-ng-test-2/releases/305391408/assets{?name,label}",
+    "html_url": "https://github.com/arkuid/padavan-ng-test-2/releases/tag/build-20260405_79775623_ac12g",
+    "id": 305391408,
     "author": {
       "login": "github-actions[bot]",
       "id": 41898282,
@@ -26,22 +26,22 @@
       "user_view_type": "public",
       "site_admin": false
     },
-    "node_id": "RE_kwDOQf52SM4SMcDZ",
-    "tag_name": "build-20260331_5c20d65e_tp-wr842n-v5-16mb",
+    "node_id": "RE_kwDOQf52SM4SM-cw",
+    "tag_name": "build-20260405_79775623_ac12g",
     "target_commitish": "main",
-    "name": "Build 20260331 (5c20d65e) - tp-wr842n-v5-16mb",
+    "name": "Build 20260405 (79775623) - ac12g",
     "draft": false,
     "immutable": false,
     "prerelease": false,
-    "created_at": "2026-04-04T08:06:04Z",
-    "updated_at": "2026-04-04T08:27:11Z",
-    "published_at": "2026-04-04T08:27:10Z",
+    "created_at": "2026-04-04T14:18:49Z",
+    "updated_at": "2026-04-05T08:07:11Z",
+    "published_at": "2026-04-05T08:07:10Z",
     "assets": [
       {
-        "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/assets/388535518",
-        "id": 388535518,
-        "node_id": "RA_kwDOQf52SM4XKJTe",
-        "name": "padavan-ng_TPLINK_TL_WR842N-V5-16M_2026.04.04_08.27.09.zip",
+        "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/assets/389245582",
+        "id": 389245582,
+        "node_id": "RA_kwDOQf52SM4XM2qO",
+        "name": "padavan-ng_TPLINK_AC12G-V1_2026.04.05_08.07.09.zip",
         "label": "",
         "uploader": {
           "login": "github-actions[bot]",
@@ -66,17 +66,17 @@
         },
         "content_type": "raw",
         "state": "uploaded",
-        "size": 11402234,
-        "digest": "sha256:3e2b0acd0677c1908513a81ecda1a940e56ee724ada42f775e74ddcd3b8dfd10",
+        "size": 7263196,
+        "digest": "sha256:3e725b3635dabbe29c4819a67500c38846661e73cecb2345e7241a6da46efc17",
         "download_count": 0,
-        "created_at": "2026-04-04T08:27:11Z",
-        "updated_at": "2026-04-04T08:27:11Z",
-        "browser_download_url": "https://github.com/arkuid/padavan-ng-test-2/releases/download/build-20260331_5c20d65e_tp-wr842n-v5-16mb/padavan-ng_TPLINK_TL_WR842N-V5-16M_2026.04.04_08.27.09.zip"
+        "created_at": "2026-04-05T08:07:11Z",
+        "updated_at": "2026-04-05T08:07:11Z",
+        "browser_download_url": "https://github.com/arkuid/padavan-ng-test-2/releases/download/build-20260405_79775623_ac12g/padavan-ng_TPLINK_AC12G-V1_2026.04.05_08.07.09.zip"
       }
     ],
-    "tarball_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/tarball/build-20260331_5c20d65e_tp-wr842n-v5-16mb",
-    "zipball_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/zipball/build-20260331_5c20d65e_tp-wr842n-v5-16mb",
-    "body": "Automated firmware build\n\n**Router model:** tp-wr842n-v5-16mb\n**Source commit:** 5c20d65ed2fb5a9a2ae483076a019ed6c238563f\n**Build date:** 2026.04.04_08.27.09\n\nLast commit message: nfqws2: updating to v0.9.4.7"
+    "tarball_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/tarball/build-20260405_79775623_ac12g",
+    "zipball_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/zipball/build-20260405_79775623_ac12g",
+    "body": "Automated firmware build\n\n**Router model:** ac12g\n**Source commit:** 79775623740b6a37bb79340d80a376e206d3c63e\n**Build date:** 2026.04.05_08.07.09\n\nLast commit message: adding Shadowsocks 3.3.6 console utility pcre is used instead of pcre2 (except commit 7bb250739ef0067c62e4ffd533ec8cee2775995a)  for ss-redir transparent proxy: CONFIG_FIRMWARE_INCLUDE_SSREDIR=y  for ss-local socks5 proxy: CONFIG_FIRMWARE_INCLUDE_SSLOCAL=y"
   },
   {
     "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/303821807",
@@ -3781,7 +3781,7 @@
         "state": "uploaded",
         "size": 32860408,
         "digest": "sha256:4f34dd7f107a05c97a8326985825c51bbece968900508a65f16f89a551773962",
-        "download_count": 48,
+        "download_count": 53,
         "created_at": "2026-03-04T16:58:13Z",
         "updated_at": "2026-03-04T16:58:15Z",
         "browser_download_url": "https://github.com/arkuid/padavan-ng-test-2/releases/download/latest/toolchain.tzst"
