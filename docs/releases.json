@@ -79,11 +79,11 @@
     "body": "Automated firmware build\n\n**Router model:** tplink-c5-v4-16M\n**Source commit:** ad98ccd452494c0756971c40b94d039235f4f310\n**Build date:** 2026.04.29_09.27.00\n\nLast commit message: libs: updating curl to 8.20.0, requires openssl >= 3.0"
   },
   {
-    "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/315305021",
-    "assets_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/315305021/assets",
-    "upload_url": "https://uploads.github.com/repos/arkuid/padavan-ng-test-2/releases/315305021/assets{?name,label}",
+    "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/315326122",
+    "assets_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/315326122/assets",
+    "upload_url": "https://uploads.github.com/repos/arkuid/padavan-ng-test-2/releases/315326122/assets{?name,label}",
     "html_url": "https://github.com/arkuid/padavan-ng-test-2/releases/tag/build-20260429_2c95e263_tplink-c5-v4-16M",
-    "id": 315305021,
+    "id": 315326122,
     "author": {
       "login": "github-actions[bot]",
       "id": 41898282,
@@ -105,22 +105,22 @@
       "user_view_type": "public",
       "site_admin": false
     },
-    "node_id": "RE_kwDOQf52SM4Syyw9",
+    "node_id": "RE_kwDOQf52SM4Sy36q",
     "tag_name": "build-20260429_2c95e263_tplink-c5-v4-16M",
     "target_commitish": "main",
     "name": "Build 20260429 (2c95e263) - tplink-c5-v4-16M",
     "draft": false,
     "immutable": false,
     "prerelease": false,
-    "created_at": "2026-04-29T16:09:05Z",
-    "updated_at": "2026-04-29T16:13:38Z",
-    "published_at": "2026-04-29T16:13:36Z",
+    "created_at": "2026-04-29T16:35:20Z",
+    "updated_at": "2026-04-29T16:58:55Z",
+    "published_at": "2026-04-29T16:58:53Z",
     "assets": [
       {
-        "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/assets/408333218",
-        "id": 408333218,
-        "node_id": "RA_kwDOQf52SM4YVqui",
-        "name": "padavan-ng_TPLINK_TL_C5-V4-16M_2026.04.29_16.13.35.zip",
+        "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/assets/408360846",
+        "id": 408360846,
+        "node_id": "RA_kwDOQf52SM4YVxeO",
+        "name": "padavan-ng_TPLINK_TL_C5-V4-16M_2026.04.29_16.58.52.zip",
         "label": "",
         "uploader": {
           "login": "github-actions[bot]",
@@ -145,17 +145,17 @@
         },
         "content_type": "raw",
         "state": "uploaded",
-        "size": 12292934,
-        "digest": "sha256:b7b7076011b2e225b57ef6eaabd964a34cb0a59b86a74545f2ed3ec08ade55ff",
+        "size": 12057368,
+        "digest": "sha256:cf70b6971eec38f5feac1cc04aa00da687c928acc838cbc6de97a6c6853acd99",
         "download_count": 0,
-        "created_at": "2026-04-29T16:13:37Z",
-        "updated_at": "2026-04-29T16:13:38Z",
-        "browser_download_url": "https://github.com/arkuid/padavan-ng-test-2/releases/download/build-20260429_2c95e263_tplink-c5-v4-16M/padavan-ng_TPLINK_TL_C5-V4-16M_2026.04.29_16.13.35.zip"
+        "created_at": "2026-04-29T16:58:54Z",
+        "updated_at": "2026-04-29T16:58:55Z",
+        "browser_download_url": "https://github.com/arkuid/padavan-ng-test-2/releases/download/build-20260429_2c95e263_tplink-c5-v4-16M/padavan-ng_TPLINK_TL_C5-V4-16M_2026.04.29_16.58.52.zip"
       }
     ],
     "tarball_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/tarball/build-20260429_2c95e263_tplink-c5-v4-16M",
     "zipball_url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/zipball/build-20260429_2c95e263_tplink-c5-v4-16M",
-    "body": "Automated firmware build\n\n**Router model:** tplink-c5-v4-16M\n**Source commit:** 2c95e2638b848193ebdebcaed6df5918f5148f4d\n**Build date:** 2026.04.29_16.13.35\n\nLast commit message: openssh: CVE-2026-35385, CVE-2026-35386, CVE-2026-35387, CVE-2026-35388"
+    "body": "Automated firmware build\n\n**Router model:** tplink-c5-v4-16M\n**Source commit:** 2c95e2638b848193ebdebcaed6df5918f5148f4d\n**Build date:** 2026.04.29_16.58.52\n\nLast commit message: openssh: CVE-2026-35385, CVE-2026-35386, CVE-2026-35387, CVE-2026-35388"
   },
   {
     "url": "https://api.github.com/repos/arkuid/padavan-ng-test-2/releases/315303068",
@@ -7652,7 +7652,7 @@
         "state": "uploaded",
         "size": 32860408,
         "digest": "sha256:4f34dd7f107a05c97a8326985825c51bbece968900508a65f16f89a551773962",
-        "download_count": 110,
+        "download_count": 111,
         "created_at": "2026-03-04T16:58:13Z",
         "updated_at": "2026-03-04T16:58:15Z",
         "browser_download_url": "https://github.com/arkuid/padavan-ng-test-2/releases/download/latest/toolchain.tzst"
