@@ -1,11 +1,15 @@
 --- a/trunk/user/httpd/ralink.c
 +++ b/trunk/user/httpd/ralink.c
-@@ -1485,7 +1485,7 @@ ej_wl_scan_xg(const char * net_device, int eid, webs_t wp, int argc, char **argv
- 	char ssid_str[128];
+@@ -1482,10 +1482,10 @@ ej_wl_scan_xg(const char * net_device, int eid, webs_t wp, int argc, char **argv
+ 	int retval = 0;
+ 	int apCount = 0;
+ 	char data[8192];
+-	char ssid_str[128];
++	char ssid_str[256];
  	char site_line[SSURV_LINE_LEN_MAX+1];
  	char site_chnl[4];
 -	char site_ssid[34];
-+	char site_ssid[65];
++	char site_ssid[64];
  	char site_bssid[24];
  	char site_signal[10];
  	struct iwreq wrq;
@@ -21,7 +25,7 @@
  			site_line[line_len] = '\0';
  			site_chnl[3] = '\0';
 -			site_ssid[33] = '\0';
-+			site_ssid[65] = '\0';
++			site_ssid[64] = '\0';
  			site_bssid[20] = '\0';
  			site_signal[9] = '\0';
  
