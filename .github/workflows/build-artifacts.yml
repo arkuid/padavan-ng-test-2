@@ -69,10 +69,12 @@ jobs:
       run: |
         ROUTER_MODEL="${{ env.ROUTER_MODEL }}"
         cd padavan-ng
+        shopt -s nullglob
         for patch_file in ../patches/$ROUTER_MODEL/*.patch; do
-        echo "=== Applying patch: $(basename $patch_file) ==="
-        patch -p1 < "$patch_file"
+           echo "=== Applying patch: $(basename $patch_file) ==="
+           patch -p1 < "$patch_file"
         done
+        shopt -u nullglob
         cd ..
         cp -r routers/configs/$ROUTER_MODEL/* padavan-ng/trunk/configs/
         cp build-$ROUTER_MODEL.config padavan-ng/trunk/.config
