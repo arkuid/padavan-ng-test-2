@@ -12,6 +12,7 @@ on:
           - "ac12g"
           - "tplink-c5-v4-16M"
           - "tp-wr842n-v5-16mb"
+          - "c20v4"
 
       commit-hash:
         description: 'Хеш коммита для переключения'
