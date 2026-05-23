@@ -1,0 +1,205 @@
+name: Check and Build Toolchain
+
+on:
+  workflow_dispatch:
+    inputs:
+      router_model:
+        description: "Router model"
+        type: choice
+        required: true
+        default: "tplink-c5-v4-16M"
+        options:
+          - "ac12g"
+          - "tplink-c5-v4-16M"
+          - "tp-wr842n-v5-16mb"
+  #schedule:
+    #- cron: '0 */7 * * *'
+
+permissions:
+  contents: write
+  actions: write
+  checks: read
+
+jobs:
+  check-toolchain-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      toolchain-changed: ${{ steps.check-toolchain.outputs.toolchain-changed }}
+      toolchain-commit-sha: ${{ steps.check-toolchain.outputs.commit-sha }}
+      toolchain-commit-date: ${{ steps.check-toolchain.outputs.commit-date }}
+    steps:
+    - name: Check for changes in padavan-ng toolchain
+      id: check-toolchain
+      run: |
+        echo "=== Debug: Checking for changes in padavan-ng toolchain ==="
+        
+        # Get last commit from padavan-ng toolchain directory
+        PADAVAN_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/nilabsent/padavan-ng/commits?path=toolchain&per_page=1")
+        
+        # Check if we got a valid response
+        if echo "$PADAVAN_RESPONSE" | jq -e '.[0]' > /dev/null 2>&1; then
+          PADAVAN_LAST_COMMIT=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].commit.committer.date')
+          PADAVAN_COMMIT_SHA=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].sha')
+          echo "Last padavan-ng toolchain commit date: $PADAVAN_LAST_COMMIT"
+          echo "Last padavan-ng toolchain commit SHA: $PADAVAN_COMMIT_SHA"
+          
+          # Format date for release tag (YYYYMMDD format)
+          COMMIT_DATE_FORMATTED=$(date -d "$PADAVAN_LAST_COMMIT" +'%Y%m%d')
+          echo "commit-date=$COMMIT_DATE_FORMATTED" >> $GITHUB_OUTPUT
+          echo "commit-sha=$PADAVAN_COMMIT_SHA" >> $GITHUB_OUTPUT
+        else
+          echo "Error accessing padavan-ng repository, assume toolchain changed"
+          echo "toolchain-changed=true" >> $GITHUB_OUTPUT
+          echo "commit-date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          echo "commit-sha=unknown" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Get ALL releases from OUR repository to check if we already have this toolchain commit
+        # Using pagination to get all releases
+        PAGE=1
+        ALL_RELEASES="[]"
+        
+        while true; do
+          echo "Fetching releases page $PAGE..."
+          PAGE_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100&page=$PAGE")
+          
+          # Check if we got any data
+          PAGE_LENGTH=$(echo "$PAGE_RESPONSE" | jq length)
+          if [ "$PAGE_LENGTH" -eq 0 ]; then
+            break
+          fi
+          
+          # Merge with previous results
+          ALL_RELEASES=$(echo "$ALL_RELEASES" "$PAGE_RESPONSE" | jq -s '.[0] + .[1]')
+          PAGE=$((PAGE + 1))
+          
+          # Safety check to avoid infinite loop
+          if [ $PAGE -gt 10 ]; then
+            echo "Reached max pages (10)"
+            break
+          fi
+        done
+        
+        RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
+        echo "Total releases found: $RELEASE_COUNT"
+        
+        # Check if we already have a release built from this specific toolchain commit
+        ALREADY_BUILT=false
+        for i in $(seq 0 $(($RELEASE_COUNT - 1))); do
+          RELEASE_BODY=$(echo "$ALL_RELEASES" | jq -r ".[$i].body // \"\"")
+          RELEASE_TAG=$(echo "$ALL_RELEASES" | jq -r ".[$i].tag_name // \"\"")
+          
+          # Skip if release body is empty
+          if [ -z "$RELEASE_BODY" ]; then
+            continue
+          fi
+          
+          # Check if this is a toolchain release (has "latest" tag)
+          if echo "$RELEASE_TAG" | grep -qi "latest"; then
+            # Ищем полный коммит в описании релиза
+            if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA"; then
+              echo "Found existing toolchain release for commit $PADAVAN_COMMIT_SHA"
+              echo "Release tag: $RELEASE_TAG"
+              ALREADY_BUILT=true
+              break
+            fi
+            # Также проверяем по короткому хешу (первые 8 символов)
+            SHORT_SHA="${PADAVAN_COMMIT_SHA:0:8}"
+            if echo "$RELEASE_BODY" | grep -q "$SHORT_SHA"; then
+              echo "Found existing toolchain release for short commit $SHORT_SHA"
+              echo "Release tag: $RELEASE_TAG"
+              ALREADY_BUILT=true
+              break
+            fi
+          fi
+        done
+        
+        if [ "$ALREADY_BUILT" = true ]; then
+          echo "Toolchain for commit $PADAVAN_COMMIT_SHA already exists."
+          echo "toolchain-changed=false" >> $GITHUB_OUTPUT
+        else
+          echo "No existing toolchain for commit $PADAVAN_COMMIT_SHA. Toolchain has changed."
+          echo "toolchain-changed=true" >> $GITHUB_OUTPUT
+        fi
+
+  build-toolchain:
+    runs-on: ubuntu-latest
+    needs: check-toolchain-changes
+    if: needs.check-toolchain-changes.outputs.toolchain-changed == 'true'
+    outputs:
+      toolchain-url: ${{ steps.create-release.outputs.download-url }}
+    env:
+      TOOLCHAIN_NAME: "padavan-toolchain"
+      TOOLCHAIN_FILE: "toolchain.tzst"
+      PADAVAN_REPO: "nilabsent/padavan-ng"
+    steps:
+    - name: Clone padavan-ng repository
+      run: |
+        git clone --depth 1 https://github.com/nilabsent/padavan-ng.git padavan-src
+        
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install --no-install-recommends -y \
+            autoconf \
+            automake \
+            bison \
+            bzip2 \
+            ca-certificates \
+            flex \
+            g++ \
+            gawk \
+            gcc \
+            git \
+            gperf \
+            help2man \
+            libncurses5-dev \
+            libstdc++6 \
+            libtool \
+            libtool-bin \
+            make \
+            patch \
+            texinfo \
+            unzip \
+            wget \
+            xz-utils \
+            zstd
+
+    - name: Build toolchain from padavan-ng
+      run: |
+        cd padavan-src/toolchain
+        chmod +x *.sh
+        ./clean_sources.sh
+        ./build_toolchain.sh
+        
+    - name: Create toolchain archive
+      run: |
+        mkdir -p temp_toolchain/toolchain
+        cp -r padavan-src/toolchain/out temp_toolchain/toolchain/
+        tar -I "zstd -9 -T0" -cf ${{ env.TOOLCHAIN_FILE }} -C temp_toolchain toolchain
+        echo "Archive created: ${{ env.TOOLCHAIN_FILE }}"
+        ls -la ${{ env.TOOLCHAIN_FILE }}
+        
+    - name: Upload toolchain as artifact
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: ${{ env.TOOLCHAIN_NAME }}
+        path: ${{ env.TOOLCHAIN_FILE }}
+        retention-days: 30
+
+    - name: Get current date for release body
+      id: date
+      run: |
+        CURRENT_DATE=$(date +'%Y-%m-%d %H:%M:%S')
+        echo "current-date=$CURRENT_DATE" >> $GITHUB_OUTPUT
+        
+    - name: Delete existing latest release
+      run: |
+        # Check if latest release exists and delete it
+        LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/releases/tags/latest" || echo '{}')
+        
+        LATEST_RELEASE_ID=$(echo "$LATEST_RELEASE"
