@@ -12,10 +12,6 @@ on:
           - "ac12g"
           - "tplink-c5-v4-16M"
           - "tp-wr842n-v5-16mb"
-  workflow_run:
-    workflows: ["Build Toolchain"]
-    types:
-      - completed
   #schedule:
     #- cron: '0 */7 * * *'
 
