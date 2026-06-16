@@ -12,6 +12,14 @@ on:
           - "ac12g"
           - "tplink-c5-v4-16M"
           - "tp-wr842n-v5-16mb"
+      run_pre_build:
+        description: "Run custom pre-build script"
+        type: choice
+        required: true
+        default: "yes"
+        options:
+          - "yes"
+          - "no"
   #schedule:
     #- cron: '0 */7 * * *'
 
@@ -147,12 +155,22 @@ jobs:
       commit-sha: ${{ steps.check.outputs.commit-sha }}
       commit-short-sha: ${{ steps.check.outputs.commit-short-sha }}
       latest-commit-message: ${{ steps.check.outputs.latest-commit-message }}
+      run-pre-build: ${{ steps.check.outputs.run-pre-build }}
     steps:
     - name: Check for changes in padavan-ng trunk
       id: check
       shell: bash
       run: |
         echo "=== Debug: Checking for changes in padavan-ng trunk ==="
+        
+        # Set run-pre-build from input
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          RUN_PRE_BUILD="${{ github.event.inputs.run_pre_build }}"
+        else
+          RUN_PRE_BUILD="yes"
+        fi
+        echo "run-pre-build=$RUN_PRE_BUILD" >> $GITHUB_OUTPUT
+        echo "Run pre-build script: $RUN_PRE_BUILD"
         
         PADAVAN_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/nilabsent/padavan-ng/commits?path=trunk&per_page=1")
@@ -337,6 +355,7 @@ jobs:
         cp $WORKSPACE_PATH/build-$ROUTER_MODEL.config padavan-ng/trunk/.config
 
     - name: Run custom pre-build script
+      if: needs.check-changes.outputs.run-pre-build == 'yes'
       run: '[[ -f pre-build-$ROUTER_MODEL.sh ]] && . pre-build-$ROUTER_MODEL.sh || :'
 
     - name: Build firmware
