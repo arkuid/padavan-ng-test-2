@@ -16,7 +16,7 @@ on:
         description: "Run custom pre-build script"
         type: choice
         required: true
-        default: "yes"
+        default: "no"
         options:
           - "yes"
           - "no"
