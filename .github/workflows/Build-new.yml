@@ -437,11 +437,11 @@ jobs:
 
     - name: Upload artifact
       if: needs.check-changes.outputs.output-type == 'artifact'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7.0.1
       with:
         name: firmware-${{ env.ROUTER_MODEL }}-${{ needs.check-changes.outputs.commit-short-sha }}
         path: padavan-ng_${{ env.CONFIG_VENDOR }}_${{ env.CONFIG_FIRMWARE_PRODUCT_ID }}_${{ env.BUILD_TIMESTAMP }}.zip
-        retention-days: 14
+        retention-days: 90
 
     - name: Create Release
       if: needs.check-changes.outputs.output-type == 'release'
