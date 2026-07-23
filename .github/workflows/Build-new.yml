@@ -1,4 +1,4 @@
-name: Build Firmware
+name: Build Firmware new
 
 on:
   workflow_dispatch:
@@ -391,7 +391,7 @@ jobs:
         ROUTER_MODEL="${{ env.ROUTER_MODEL }}"
         partitions="padavan-ng/trunk/configs/boards/$CONFIG_VENDOR/$CONFIG_FIRMWARE_PRODUCT_ID/partitions.config"
         max_fw_size="$(awk '/Firmware/ { getline; getline; sub(",", ""); print strtonum($2); }' "$partitions")"
-        fw_size="$(stat -c %s "$FW_FILE_NAME")"
+        fw_size="$(stat -c %s "padavan-ng/trunk/images/$FW_FILE_NAME")"
         
         if ((fw_size > max_fw_size)); then
           fw_size_fmtd="$(numfmt --grouping "$fw_size") bytes"
@@ -410,24 +410,15 @@ jobs:
         echo "COMMIT_SHA=${{ needs.check-changes.outputs.commit-sha }}" >> $GITHUB_ENV
         echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
         
-        # Копируем файл прошивки
+        # Копируем файл прошивки из папки images
         cp "padavan-ng/trunk/images/$FW_FILE_NAME" .
         
-        # Создаем директорию для упаковки
-        mkdir -p firmware_package
-        cp "$FW_FILE_NAME" firmware_package/
-        cp "build-$ROUTER_MODEL.config" firmware_package/
-        
-        # Создаем ZIP архив один раз
+        # Создаем ZIP архив
         ZIP_NAME="firmware-$ROUTER_MODEL-$SHORT_SHA-$BUILD_TIMESTAMP.zip"
-        cd firmware_package
-        zip -r "../$ZIP_NAME" .
-        cd ..
+        zip "$ZIP_NAME" "$FW_FILE_NAME" "build-$ROUTER_MODEL.config"
         
         echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
         echo "ZIP archive created: $ZIP_NAME"
-        
-        # Проверяем, что файл создан
         ls -la "$ZIP_NAME"
 
     - name: Upload artifact
