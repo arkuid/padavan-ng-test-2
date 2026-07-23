@@ -1,4 +1,4 @@
-name: Build Firmware new
+name: Build Firmware
 
 on:
   workflow_dispatch:
@@ -28,8 +28,6 @@ on:
         options:
           - "release"
           - "artifact"
-  #schedule:
-    #- cron: '0 */7 * * *'
 
 permissions:
   contents: write
@@ -49,18 +47,15 @@ jobs:
       run: |
         echo "=== Debug: Checking for changes in padavan-ng toolchain ==="
         
-        # Get last commit from padavan-ng toolchain directory
         PADAVAN_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           "https://api.github.com/repos/nilabsent/padavan-ng/commits?path=toolchain&per_page=1")
         
-        # Check if we got a valid response
         if echo "$PADAVAN_RESPONSE" | jq -e '.[0]' > /dev/null 2>&1; then
           PADAVAN_LAST_COMMIT=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].commit.committer.date')
           PADAVAN_COMMIT_SHA=$(echo "$PADAVAN_RESPONSE" | jq -r '.[0].sha')
           echo "Last padavan-ng toolchain commit date: $PADAVAN_LAST_COMMIT"
           echo "Last padavan-ng toolchain commit SHA: $PADAVAN_COMMIT_SHA"
           
-          # Format date for release tag (YYYYMMDD format)
           COMMIT_DATE_FORMATTED=$(date -d "$PADAVAN_LAST_COMMIT" +'%Y%m%d')
           echo "commit-date=$COMMIT_DATE_FORMATTED" >> $GITHUB_OUTPUT
           echo "commit-sha=$PADAVAN_COMMIT_SHA" >> $GITHUB_OUTPUT
@@ -72,7 +67,6 @@ jobs:
           exit 0
         fi
         
-        # Get ALL releases from OUR repository to check if we already have this toolchain commit
         PAGE=1
         ALL_RELEASES="[]"
         
@@ -98,7 +92,6 @@ jobs:
         RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
         echo "Total releases found: $RELEASE_COUNT"
         
-        # Check if we already have a release built from this specific toolchain commit
         ALREADY_BUILT=false
         for i in $(seq 0 $(($RELEASE_COUNT - 1))); do
           RELEASE_BODY=$(echo "$ALL_RELEASES" | jq -r ".[$i].body // \"\"")
@@ -172,7 +165,6 @@ jobs:
       run: |
         echo "=== Debug: Checking for changes in padavan-ng trunk ==="
         
-        # Set run-pre-build and output-type from input
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           RUN_PRE_BUILD="${{ github.event.inputs.run_pre_build }}"
           OUTPUT_TYPE="${{ github.event.inputs.output_type }}"
@@ -215,7 +207,6 @@ jobs:
           exit 0
         fi
         
-        # Determine router model
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           ROUTER_MODEL="${{ github.event.inputs.router_model }}"
         else
@@ -223,14 +214,12 @@ jobs:
         fi
         echo "Router model: $ROUTER_MODEL"
         
-        # For ARTIFACT mode: always build (no checks)
         if [ "$OUTPUT_TYPE" = "artifact" ]; then
           echo "Artifact mode: building regardless of existing releases"
           echo "should-build=true" >> $GITHUB_OUTPUT
           exit 0
         fi
         
-        # For RELEASE mode: check if release already exists
         echo "Release mode: checking for existing releases..."
         
         PAGE=1
@@ -397,29 +386,6 @@ jobs:
         echo "FW_FILE_NAME=$FW_FILE_NAME" >> $GITHUB_ENV
         echo "ORIGINAL_FW_NAME=$FW_FILE_NAME" >> $GITHUB_ENV
 
-    - name: Prepare firmware package
-      run: |
-        ROUTER_MODEL="${{ env.ROUTER_MODEL }}"
-        SHORT_SHA="${{ needs.check-changes.outputs.commit-short-sha }}"
-        
-        cp "padavan-ng/trunk/images/$FW_FILE_NAME" .
-        
-        echo "BUILD_TIMESTAMP=$(date '+%Y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV
-        echo "COMMIT_SHA=${{ needs.check-changes.outputs.commit-sha }}" >> $GITHUB_ENV
-        echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
-        
-        # Create directory for packaging
-        mkdir -p firmware_package
-        cp "$FW_FILE_NAME" firmware_package/
-        cp "build-$ROUTER_MODEL.config" firmware_package/
-        
-        # Create ZIP archive once
-        cd firmware_package
-        zip -r "../padavan-ng_${{ env.CONFIG_VENDOR }}_${{ env.CONFIG_FIRMWARE_PRODUCT_ID }}_${{ env.BUILD_TIMESTAMP }}.zip" .
-        cd ..
-        
-        echo "ZIP archive created successfully"
-
     - name: Check firmware size
       run: |
         ROUTER_MODEL="${{ env.ROUTER_MODEL }}"
@@ -434,12 +400,42 @@ jobs:
           exit 1
         fi
 
+    - name: Prepare firmware package
+      run: |
+        ROUTER_MODEL="${{ env.ROUTER_MODEL }}"
+        SHORT_SHA="${{ needs.check-changes.outputs.commit-short-sha }}"
+        BUILD_TIMESTAMP=$(date '+%Y.%m.%d_%H.%M.%S')
+        
+        echo "BUILD_TIMESTAMP=$BUILD_TIMESTAMP" >> $GITHUB_ENV
+        echo "COMMIT_SHA=${{ needs.check-changes.outputs.commit-sha }}" >> $GITHUB_ENV
+        echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+        
+        # Копируем файл прошивки
+        cp "padavan-ng/trunk/images/$FW_FILE_NAME" .
+        
+        # Создаем директорию для упаковки
+        mkdir -p firmware_package
+        cp "$FW_FILE_NAME" firmware_package/
+        cp "build-$ROUTER_MODEL.config" firmware_package/
+        
+        # Создаем ZIP архив один раз
+        ZIP_NAME="firmware-$ROUTER_MODEL-$SHORT_SHA-$BUILD_TIMESTAMP.zip"
+        cd firmware_package
+        zip -r "../$ZIP_NAME" .
+        cd ..
+        
+        echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+        echo "ZIP archive created: $ZIP_NAME"
+        
+        # Проверяем, что файл создан
+        ls -la "$ZIP_NAME"
+
     - name: Upload artifact
       if: needs.check-changes.outputs.output-type == 'artifact'
       uses: actions/upload-artifact@v7.0.1
       with:
         name: firmware-${{ env.ROUTER_MODEL }}-${{ needs.check-changes.outputs.commit-short-sha }}
-        path: padavan-ng_${{ env.CONFIG_VENDOR }}_${{ env.CONFIG_FIRMWARE_PRODUCT_ID }}_${{ env.BUILD_TIMESTAMP }}.zip
+        path: ${{ env.ZIP_NAME }}
         retention-days: 90
 
     - name: Create Release
@@ -456,7 +452,7 @@ jobs:
           **Build date:** ${{ env.BUILD_TIMESTAMP }}
           
           Last commit message: ${{ needs.check-changes.outputs.latest-commit-message }}
-        artifacts: 'padavan-ng_${{ env.CONFIG_VENDOR }}_${{ env.CONFIG_FIRMWARE_PRODUCT_ID }}_${{ env.BUILD_TIMESTAMP }}.zip'
+        artifacts: ${{ env.ZIP_NAME }}
         draft: false
         prerelease: false
       env:
