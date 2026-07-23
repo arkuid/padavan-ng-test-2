@@ -397,7 +397,7 @@ jobs:
         echo "FW_FILE_NAME=$FW_FILE_NAME" >> $GITHUB_ENV
         echo "ORIGINAL_FW_NAME=$FW_FILE_NAME" >> $GITHUB_ENV
 
-    - name: Prepare artifacts
+    - name: Prepare firmware package
       run: |
         ROUTER_MODEL="${{ env.ROUTER_MODEL }}"
         SHORT_SHA="${{ needs.check-changes.outputs.commit-short-sha }}"
@@ -407,6 +407,18 @@ jobs:
         echo "BUILD_TIMESTAMP=$(date '+%Y.%m.%d_%H.%M.%S')" >> $GITHUB_ENV
         echo "COMMIT_SHA=${{ needs.check-changes.outputs.commit-sha }}" >> $GITHUB_ENV
         echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+        
+        # Create directory for packaging
+        mkdir -p firmware_package
+        cp "$FW_FILE_NAME" firmware_package/
+        cp "build-$ROUTER_MODEL.config" firmware_package/
+        
+        # Create ZIP archive once
+        cd firmware_package
+        zip -r "../padavan-ng_${{ env.CONFIG_VENDOR }}_${{ env.CONFIG_FIRMWARE_PRODUCT_ID }}_${{ env.BUILD_TIMESTAMP }}.zip" .
+        cd ..
+        
+        echo "ZIP archive created successfully"
 
     - name: Check firmware size
       run: |
@@ -421,19 +433,6 @@ jobs:
           echo "Firmware size ($fw_size_fmtd) exceeds max size ($max_fw_size_fmtd) for $ROUTER_MODEL"
           exit 1
         fi
-
-    - name: Create release ZIP archive
-      id: create_zip
-      uses: thedoctor0/zip-release@0.7.6
-      with:
-        type: 'zip'
-        filename: 'padavan-ng_${{ env.CONFIG_VENDOR }}_${{ env.CONFIG_FIRMWARE_PRODUCT_ID }}_${{ env.BUILD_TIMESTAMP }}.zip'
-        directory: '.'
-        path: |
-          ${{ env.FW_FILE_NAME }}
-          build-${{ env.ROUTER_MODEL }}.config
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload artifact
       if: needs.check-changes.outputs.output-type == 'artifact'
