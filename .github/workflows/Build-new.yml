@@ -215,68 +215,72 @@ jobs:
           exit 0
         fi
         
-        # Only check for existing releases if output type is "release"
-        if [ "$OUTPUT_TYPE" = "release" ]; then
-          PAGE=1
-          ALL_RELEASES="[]"
-          
-          while true; do
-            echo "Fetching releases page $PAGE..."
-            PAGE_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100&page=$PAGE")
-            
-            PAGE_LENGTH=$(echo "$PAGE_RESPONSE" | jq length)
-            if [ "$PAGE_LENGTH" -eq 0 ]; then
-              break
-            fi
-            
-            ALL_RELEASES=$(echo "$ALL_RELEASES" "$PAGE_RESPONSE" | jq -s '.[0] + .[1]')
-            PAGE=$((PAGE + 1))
-            
-            if [ $PAGE -gt 10 ]; then
-              echo "Reached max pages (10)"
-              break
-            fi
-          done
-          
-          RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
-          echo "Total releases found: $RELEASE_COUNT"
-          
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ROUTER_MODEL="${{ github.event.inputs.router_model }}"
-          else
-            ROUTER_MODEL="tplink-c5-v4-16M"
-          fi
-          echo "Checking for router model: $ROUTER_MODEL"
-          
-          ALREADY_BUILT=false
-          for i in $(seq 0 $(($RELEASE_COUNT - 1))); do
-            RELEASE_BODY=$(echo "$ALL_RELEASES" | jq -r ".[$i].body // \"\"")
-            RELEASE_TAG=$(echo "$ALL_RELEASES" | jq -r ".[$i].tag_name // \"\"")
-            
-            if [ -z "$RELEASE_BODY" ]; then
-              continue
-            fi
-            
-            if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA" && \
-               echo "$RELEASE_BODY" | grep -qi "$ROUTER_MODEL"; then
-              echo "Found existing release for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL"
-              echo "Release tag: $RELEASE_TAG"
-              ALREADY_BUILT=true
-              break
-            fi
-          done
-          
-          if [ "$ALREADY_BUILT" = true ]; then
-            echo "Firmware for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL already exists. Skipping build."
-            echo "should-build=false" >> $GITHUB_OUTPUT
-          else
-            echo "No existing firmware for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL. Should build."
-            echo "should-build=true" >> $GITHUB_OUTPUT
-          fi
+        # Determine router model
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          ROUTER_MODEL="${{ github.event.inputs.router_model }}"
         else
-          # For artifacts, always build
+          ROUTER_MODEL="tplink-c5-v4-16M"
+        fi
+        echo "Router model: $ROUTER_MODEL"
+        
+        # For ARTIFACT mode: always build (no checks)
+        if [ "$OUTPUT_TYPE" = "artifact" ]; then
           echo "Artifact mode: building regardless of existing releases"
+          echo "should-build=true" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # For RELEASE mode: check if release already exists
+        echo "Release mode: checking for existing releases..."
+        
+        PAGE=1
+        ALL_RELEASES="[]"
+        
+        while true; do
+          echo "Fetching releases page $PAGE..."
+          PAGE_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100&page=$PAGE")
+          
+          PAGE_LENGTH=$(echo "$PAGE_RESPONSE" | jq length)
+          if [ "$PAGE_LENGTH" -eq 0 ]; then
+            break
+          fi
+          
+          ALL_RELEASES=$(echo "$ALL_RELEASES" "$PAGE_RESPONSE" | jq -s '.[0] + .[1]')
+          PAGE=$((PAGE + 1))
+          
+          if [ $PAGE -gt 10 ]; then
+            echo "Reached max pages (10)"
+            break
+          fi
+        done
+        
+        RELEASE_COUNT=$(echo "$ALL_RELEASES" | jq length)
+        echo "Total releases found: $RELEASE_COUNT"
+        
+        ALREADY_BUILT=false
+        for i in $(seq 0 $(($RELEASE_COUNT - 1))); do
+          RELEASE_BODY=$(echo "$ALL_RELEASES" | jq -r ".[$i].body // \"\"")
+          RELEASE_TAG=$(echo "$ALL_RELEASES" | jq -r ".[$i].tag_name // \"\"")
+          
+          if [ -z "$RELEASE_BODY" ]; then
+            continue
+          fi
+          
+          if echo "$RELEASE_BODY" | grep -q "$PADAVAN_COMMIT_SHA" && \
+             echo "$RELEASE_BODY" | grep -qi "$ROUTER_MODEL"; then
+            echo "Found existing release for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL"
+            echo "Release tag: $RELEASE_TAG"
+            ALREADY_BUILT=true
+            break
+          fi
+        done
+        
+        if [ "$ALREADY_BUILT" = true ]; then
+          echo "Firmware for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL already exists. Skipping build."
+          echo "should-build=false" >> $GITHUB_OUTPUT
+        else
+          echo "No existing firmware for trunk commit $PADAVAN_COMMIT_SHA and router $ROUTER_MODEL. Should build."
           echo "should-build=true" >> $GITHUB_OUTPUT
         fi
 
@@ -437,7 +441,7 @@ jobs:
       with:
         name: firmware-${{ env.ROUTER_MODEL }}-${{ needs.check-changes.outputs.commit-short-sha }}
         path: padavan-ng_${{ env.CONFIG_VENDOR }}_${{ env.CONFIG_FIRMWARE_PRODUCT_ID }}_${{ env.BUILD_TIMESTAMP }}.zip
-        retention-days: 90
+        retention-days: 14
 
     - name: Create Release
       if: needs.check-changes.outputs.output-type == 'release'
@@ -471,4 +475,4 @@ jobs:
             "ref": "main"
           }'
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
