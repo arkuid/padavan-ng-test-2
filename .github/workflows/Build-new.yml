@@ -391,7 +391,7 @@ jobs:
       run: |
         ROUTER_MODEL="${{ env.ROUTER_MODEL }}"
         partitions="padavan-ng/trunk/configs/boards/$CONFIG_VENDOR/$CONFIG_FIRMWARE_PRODUCT_ID/partitions.config"
-        max_fw_size="$(awk '/Firmware/ { getline; getline; sub(",", ""); print strtonum($2); }' "$partitions")"
+        max_fw_size="$(sed -n '/Firmware/,+3p' "$partitions" | tail -1 | tr -d ',' | grep -o '[0-9]*' | head -1)"
         fw_size="$(stat -c %s "padavan-ng/trunk/images/$FW_FILE_NAME")"
         
         if ((fw_size > max_fw_size)); then
