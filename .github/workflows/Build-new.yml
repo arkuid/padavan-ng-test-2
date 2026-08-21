@@ -13,6 +13,7 @@ on:
           - "tplink-c5-v4-16M"
           - "tp-wr842n-v5-16mb"
           - "tplink-c20-v4-16M"
+          - "tp-wr841n-v13"
       run_pre_build:
         description: "Run custom pre-build script"
         type: choice
